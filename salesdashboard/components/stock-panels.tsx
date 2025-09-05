@@ -1,6 +1,6 @@
-import React from "react";
 "use client"
 
+import React from "react";
 import { useState, useMemo } from "react"
 import { useInventory } from "@/lib/inventory-store"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
