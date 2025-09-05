@@ -1,4 +1,5 @@
 "use client";
+
 import React from "react";
 import { useState, useMemo } from "react";
 import { useInventory } from "@/lib/inventory-store";
@@ -44,7 +45,11 @@ function ItemDropdown({
           <DropdownMenuLabel className="text-neutral-400">Choose</DropdownMenuLabel>
           <DropdownMenuSeparator />
           {options.map((o) => (
-            <DropdownMenuItem key={o} onClick={() => onSelect(o)} className="flex items-center justify-between">
+            <DropdownMenuItem
+              key={o}
+              onClick={() => onSelect(o)}
+              className="flex items-center justify-between"
+            >
               {o}
               <button
                 onClick={(e) => {
@@ -91,29 +96,46 @@ export function StockPanels() {
   // Inventory context
   const inv = useInventory();
   // Item selection
-  const [item, setItem] = React.useState<string | undefined>(Object.keys(inv.state.items)[0]);
+  const [item, setItem] = React.useState<string | undefined>(
+    Object.keys(inv.state.items)[0]
+  );
   // Type selection
   const [type, setType] = React.useState("");
   // Types for selected item
   const types: string[] = item ? Object.keys(inv.state.items[item] ?? {}) : [];
   // Quantity available
-  const qty = item && type && inv.state.items[item] && inv.state.items[item][type] && typeof inv.state.items[item][type] === 'object'
-    ? ((inv.state.items[item][type] as { qty: number }).qty ?? 0)
-    : 0;
+  const qty =
+    item &&
+    type &&
+    inv.state.items[item] &&
+    inv.state.items[item][type] &&
+    typeof inv.state.items[item][type] === "object"
+      ? ((inv.state.items[item][type] as { qty: number }).qty ?? 0)
+      : 0;
   // Quantity out
   const [qout, setQout] = React.useState(0);
   // Source selection
   const [source, setSource] = React.useState<string | null>(null);
   // Supplier report state
-  const [reportResults, setReportResults] = React.useState<Array<{id: string; at: string | number; item: string; type: string; qty: number; price?: number}>>([]);
+  const [reportResults, setReportResults] = React.useState<
+    Array<{
+      id: string;
+      at: string | number;
+      item: string;
+      type: string;
+      qty: number;
+      price?: number;
+    }>
+  >([]);
   const [reportSource, setReportSource] = React.useState("");
   const [reportFrom, setReportFrom] = React.useState("");
   const [reportTo, setReportTo] = React.useState("");
   // Search functionality
   const [searchIn, setSearchIn] = React.useState("");
   const [searchMenuOpen, setSearchMenuOpen] = React.useState(false);
-  const filteredItems: string[] = Object.keys(inv.state.items).filter((name: string) =>
-    name.toLowerCase().includes(searchIn.toLowerCase())
+  const filteredItems: string[] = Object.keys(inv.state.items).filter(
+    (name: string) =>
+      name.toLowerCase().includes(searchIn.toLowerCase())
   );
   // Handler functions
   const handleGenerateReport = () => {
@@ -130,7 +152,9 @@ export function StockPanels() {
         {/* STOCK IN */}
         <Card className="bg-neutral-900/60 border-neutral-800">
           <CardHeader>
-            <CardTitle className="text-xs tracking-wider text-neutral-400">STOCK IN</CardTitle>
+            <CardTitle className="text-xs tracking-wider text-neutral-400">
+              STOCK IN
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {/* Search input for Stock In section */}
@@ -172,22 +196,24 @@ export function StockPanels() {
                 </div>
               )}
             </div>
-            {/* ...rest of STOCK IN controls (dropdowns, inputs, etc.) ... */}
           </CardContent>
         </Card>
+
         {/* STOCK OUT */}
         <Card className="bg-neutral-900/60 border-neutral-800">
           <CardHeader>
-            <CardTitle className="text-xs tracking-wider text-neutral-400">STOCK OUT</CardTitle>
+            <CardTitle className="text-xs tracking-wider text-neutral-400">
+              STOCK OUT
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <ItemDropdown
               label="Item"
               selected={item}
               onSelect={(v) => {
-                setItem(v)
-                const first = Object.keys(inv.state.items[v] ?? {})[0]
-                setType(first)
+                setItem(v);
+                const first = Object.keys(inv.state.items[v] ?? {})[0];
+                setType(first);
               }}
               onAdd={(name) => inv.addItem(name)}
               onRemove={(name) => inv.removeItem(name)}
@@ -212,31 +238,35 @@ export function StockPanels() {
               className="bg-orange-500 hover:bg-orange-400"
               onClick={() => {
                 if (item && type && qout > 0) {
-                  inv.stockOut(item, type, qout)
-                  setQout(0)
+                  inv.stockOut(item, type, qout);
+                  setQout(0);
                 }
               }}
             >
               Remove
             </Button>
             <div className="text-xs text-neutral-400">
-              Selected available: <span className="text-neutral-100">{qty}</span>
+              Selected available:{" "}
+              <span className="text-neutral-100">{qty}</span>
             </div>
           </CardContent>
         </Card>
+
         {/* TOTAL STOCK */}
         <Card className="bg-neutral-900/60 border-neutral-800">
           <CardHeader>
-            <CardTitle className="text-xs tracking-wider text-neutral-400">TOTAL STOCK</CardTitle>
+            <CardTitle className="text-xs tracking-wider text-neutral-400">
+              TOTAL STOCK
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <ItemDropdown
               label="Item"
               selected={item}
               onSelect={(v) => {
-                setItem(v)
-                const first = Object.keys(inv.state.items[v] ?? {})[0]
-                setType(first)
+                setItem(v);
+                const first = Object.keys(inv.state.items[v] ?? {})[0];
+                setType(first);
               }}
               onAdd={(name) => inv.addItem(name)}
               onRemove={(name) => inv.removeItem(name)}
@@ -252,14 +282,19 @@ export function StockPanels() {
             />
             <div className="bg-neutral-900 border border-neutral-800 rounded-md p-3">
               <div className="text-xs text-neutral-400">Quantity available</div>
-              <div className="mt-1 text-3xl font-extrabold text-white">{qty}</div>
+              <div className="mt-1 text-3xl font-extrabold text-white">
+                {qty}
+              </div>
             </div>
           </CardContent>
         </Card>
       </div>
+
       {/* Supplier Report Section */}
       <div className="mt-8 bg-neutral-900/60 border border-neutral-800 rounded-md p-6">
-        <h2 className="text-xs tracking-wider text-neutral-400 mb-4">Supplier Report</h2>
+        <h2 className="text-xs tracking-wider text-neutral-400 mb-4">
+          Supplier Report
+        </h2>
         <div className="flex flex-wrap gap-4 mb-4">
           <div>
             <label className="block text-xs text-neutral-400 mb-1">From</label>
@@ -289,23 +324,33 @@ export function StockPanels() {
             className="bg-neutral-900 border border-neutral-800 rounded px-3 py-2 text-neutral-100"
           >
             {inv.state.sources.map((src) => (
-              <option key={src} value={src}>{src}</option>
+              <option key={src} value={src}>
+                {src}
+              </option>
             ))}
           </select>
         </div>
         <div className="flex gap-4 mb-4">
-          <Button className="bg-blue-600 hover:bg-blue-500" onClick={handleGenerateReport}>
+          <Button
+            className="bg-blue-600 hover:bg-blue-500"
+            onClick={handleGenerateReport}
+          >
             Generate Report
           </Button>
-          <Button className="bg-green-600 hover:bg-green-500" onClick={handleDownloadExcel}>
+          <Button
+            className="bg-green-600 hover:bg-green-500"
+            onClick={handleDownloadExcel}
+          >
             Download Excel
           </Button>
         </div>
+
         {/* Report Table */}
-        {/* Report Table Section - fix JSX conditional rendering */}
         {reportResults.length > 0 ? (
           <div className="mt-4">
-            <h3 className="text-xs text-neutral-400 mb-2">Report for {reportSource} ({reportFrom} to {reportTo})</h3>
+            <h3 className="text-xs text-neutral-400 mb-2">
+              Report for {reportSource} ({reportFrom} to {reportTo})
+            </h3>
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-neutral-400">
@@ -319,7 +364,9 @@ export function StockPanels() {
               <tbody>
                 {reportResults.map((e) => (
                   <tr key={e.id} className="border-b border-neutral-800">
-                    <td className="px-2 py-1">{new Date(e.at).toLocaleString()}</td>
+                    <td className="px-2 py-1">
+                      {new Date(e.at).toLocaleString()}
+                    </td>
                     <td className="px-2 py-1">{e.item}</td>
                     <td className="px-2 py-1">{e.type}</td>
                     <td className="px-2 py-1">{e.qty}</td>
@@ -331,7 +378,9 @@ export function StockPanels() {
           </div>
         ) : (
           <div className="mt-4">
-            <h3 className="text-xs text-neutral-400 mb-2">Dummy Report Structure</h3>
+            <h3 className="text-xs text-neutral-400 mb-2">
+              Dummy Report Structure
+            </h3>
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-neutral-400">
@@ -339,7 +388,7 @@ export function StockPanels() {
                   <th className="px-2 py-1 text-left">Item</th>
                   <th className="px-2 py-1 text-left">Type</th>
                   <th className="px-2 py-1 text-left">Quantity</th>
-                  <th className="px-2 py-1 text-left">Price</th>
+                  <th className="px-2 py-1">Price</th>
                 </tr>
               </thead>
               <tbody>
