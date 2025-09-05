@@ -1,11 +1,10 @@
-"use client"
-
+"use client";
 import React from "react";
-import { useState, useMemo } from "react"
-import { useInventory } from "@/lib/inventory-store"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { useState, useMemo } from "react";
+import { useInventory } from "@/lib/inventory-store";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,9 +12,9 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { ChevronDown, Plus, Trash2 } from "lucide-react"
-import * as XLSX from "xlsx"
+} from "@/components/ui/dropdown-menu";
+import { ChevronDown, Plus, Trash2 } from "lucide-react";
+import * as XLSX from "xlsx";
 
 function ItemDropdown({
   selected,
@@ -25,14 +24,14 @@ function ItemDropdown({
   options,
   label,
 }: {
-  selected?: string
-  onSelect: (v: string) => void
-  onAdd: (name: string) => void
-  onRemove: (name: string) => void
-  options: string[]
-  label: string
+  selected?: string;
+  onSelect: (v: string) => void;
+  onAdd: (name: string) => void;
+  onRemove: (name: string) => void;
+  options: string[];
+  label: string;
 }) {
-  const [newName, setNewName] = useState("")
+  const [newName, setNewName] = useState("");
   return (
     <div className="flex items-center gap-2">
       <DropdownMenu>
@@ -49,8 +48,8 @@ function ItemDropdown({
               {o}
               <button
                 onClick={(e) => {
-                  e.stopPropagation()
-                  onRemove(o)
+                  e.stopPropagation();
+                  onRemove(o);
                 }}
                 className="p-1 rounded hover:bg-neutral-800"
                 aria-label={`Remove ${o}`}
@@ -72,8 +71,8 @@ function ItemDropdown({
                 size="sm"
                 onClick={() => {
                   if (newName.trim()) {
-                    onAdd(newName.trim())
-                    setNewName("")
+                    onAdd(newName.trim());
+                    setNewName("");
                   }
                 }}
                 className="bg-blue-600 hover:bg-blue-500"
@@ -85,7 +84,7 @@ function ItemDropdown({
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
-  )
+  );
 }
 
 export function StockPanels() {
