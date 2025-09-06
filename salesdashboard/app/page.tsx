@@ -6,7 +6,7 @@ import { RightSidebar } from "@/components/right-sidebar"
 import { InventoryProvider } from "@/lib/inventory-store"
 import { KPIs } from "@/components/kpis"
 import { OverviewChart } from "@/components/overview-chart"
-import { StockPanels } from "@/components/stock-panels"
+import StockPanels from "@/components/StockPanels.client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { HistoryTable } from "@/components/history-table"
 

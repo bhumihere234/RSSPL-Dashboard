@@ -92,7 +92,7 @@ function ItemDropdown({
   );
 }
 
-export function StockPanels() {
+export default function StockPanels() {
   // Inventory context
   const inv = useInventory();
   // Item selection
