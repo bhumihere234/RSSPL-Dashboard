@@ -10,9 +10,10 @@ export type InventoryEvent = {
   type: string;
   qty: number;
   kind: EventKind;
-  at: number;
-  source?: string;
+  at: number;          // milliseconds since epoch (date of the event)
+  source?: string;     // supplier/source
   price?: number;
+  invoice?: string;    // <-- NEW: invoice number
 };
 
 export type Notification = {
@@ -46,8 +47,19 @@ type Ctx = {
   removeType: (item: string, type: string) => void;
   addSource: (name: string) => void;
   removeSource: (name: string) => void;
-  stockIn: (item: string, type: string, qty: number, source?: string, price?: number) => void;
+
+  // NOTE: extended signature to include optional atMs + invoice
+  stockIn: (
+    item: string,
+    type: string,
+    qty: number,
+    source?: string,
+    price?: number,
+    atMs?: number,
+    invoice?: string
+  ) => void;
   stockOut: (item: string, type: string, qty: number) => void;
+
   getQty: (item: string, type: string) => number;
   clearNotifications: () => void;
   resolveMessage: (id: string) => void;
@@ -60,27 +72,9 @@ const defaultState: InventoryState = {
     Gloves: { Latex: 0, Nitrile: 25 },
   },
   events: [
-    {
-      id: "e1",
-      item: "Boxes",
-      type: "Small",
-      qty: 20,
-      kind: "in",
-      at: Date.now() - 1000 * 60 * 60 * 24 * 5,
-      source: "Warehouse",
-      price: 100,
-    },
+    { id: "e1", item: "Boxes", type: "Small", qty: 20, kind: "in", at: Date.now() - 1000 * 60 * 60 * 24 * 5, source: "Warehouse", price: 100, invoice: "INV-1001" },
     { id: "e2", item: "Boxes", type: "Small", qty: 10, kind: "out", at: Date.now() - 1000 * 60 * 60 * 24 * 4 },
-    {
-      id: "e3",
-      item: "Tapes",
-      type: "Clear",
-      qty: 10,
-      kind: "in",
-      at: Date.now() - 1000 * 60 * 60 * 24 * 3,
-      source: "Supplier",
-      price: 50,
-    },
+    { id: "e3", item: "Tapes", type: "Clear", qty: 10, kind: "in", at: Date.now() - 1000 * 60 * 60 * 24 * 3, source: "Supplier", price: 50, invoice: "INV-1002" },
     { id: "e4", item: "Gloves", type: "Latex", qty: 10, kind: "out", at: Date.now() - 1000 * 60 * 60 * 24 * 2 },
   ],
   notifications: [],
@@ -116,17 +110,14 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
 
   const addSource = (name: string) => {
     if (!name) return;
-    setState((s: InventoryState) => {
+    setState((s) => {
       if (s.sources && s.sources.includes(name)) return s;
       return { ...s, sources: s.sources ? [...s.sources, name] : [name] };
     });
   };
 
   const removeSource = (name: string) => {
-    setState((s: InventoryState) => ({
-      ...s,
-      sources: s.sources ? s.sources.filter((sname: string) => sname !== name) : [],
-    }));
+    setState((s) => ({ ...s, sources: s.sources ? s.sources.filter((sname) => sname !== name) : [] }));
   };
 
   React.useEffect(() => {
@@ -147,8 +138,7 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
 
   const removeItem = (name: string) => {
     setState((s) => {
-      const rest = { ...s.items };
-      delete rest[name];
+      const { [name]: _, ...rest } = s.items;
       return { ...s, items: rest };
     });
   };
@@ -166,33 +156,45 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
     setState((s) => {
       const existingItem = s.items[item];
       if (!existingItem) return s;
-      const restTypes = { ...existingItem };
-      delete restTypes[type];
+      const { [type]: _, ...restTypes } = existingItem;
       return { ...s, items: { ...s.items, [item]: restTypes } };
     });
   };
 
-  const pushEventAndNotif = (item: string, type: string, qty: number, kind: EventKind) => {
-    const at = Date.now();
-    const id = `${at}-${Math.random().toString(36).slice(2, 7)}`;
+  const pushEventAndNotif = (event: InventoryEvent) => {
     setState((s) => ({
       ...s,
-      events: [...s.events, { id, item, type, qty, kind, at }],
+      events: [...s.events, event],
       notifications: [
         {
-          id: `n-${id}`,
-          text: `${kind === "in" ? "Stock In" : "Stock Out"} • ${item} • ${type} • ${qty}`,
-          kind,
-          at,
+          id: `n-${event.id}`,
+          text:
+            (event.kind === "in"
+              ? `Stock In • ${event.item} • ${event.type} • ${event.qty}`
+              : `Stock Out • ${event.item} • ${event.type} • ${event.qty}`) +
+            (event.source ? ` • ${event.source}` : "") +
+            (event.invoice ? ` • ${event.invoice}` : ""),
+          kind: event.kind,
+          at: event.at,
         },
         ...s.notifications,
       ].slice(0, 25),
     }));
   };
 
-  const stockIn = (item: string, type: string, qty: number, source?: string, price?: number) => {
+  // EXTENDED: atMs + invoice are optional
+  const stockIn = (
+    item: string,
+    type: string,
+    qty: number,
+    source?: string,
+    price?: number,
+    atMs?: number,
+    invoice?: string
+  ) => {
     if (!qty || qty <= 0) return;
-    setState((s: InventoryState) => {
+
+    setState((s) => {
       const itemMap = s.items[item] || {};
       const current = itemMap[type] ?? 0;
       const nextItems = {
@@ -201,22 +203,21 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       };
       return { ...s, items: nextItems };
     });
-    // Add source and price to event
-    const at = Date.now();
+
+    const at = typeof atMs === "number" && !Number.isNaN(atMs) ? atMs : Date.now();
     const id = `${at}-${Math.random().toString(36).slice(2, 7)}`;
-    setState((s: InventoryState) => ({
-      ...s,
-      events: [...s.events, { id, item, type, qty, kind: "in", at, source, price }],
-      notifications: [
-        {
-          id: `n-${id}`,
-          text: `Stock In • ${item} • ${type} • ${qty} • ${source ?? ""} • ${price ?? ""}`,
-          kind: "in" as EventKind,
-          at,
-        },
-        ...s.notifications,
-      ].slice(0, 25),
-    }));
+
+    pushEventAndNotif({
+      id,
+      item,
+      type,
+      qty,
+      kind: "in",
+      at,
+      source,
+      price,
+      invoice,
+    });
   };
 
   const stockOut = (item: string, type: string, qty: number) => {
@@ -233,20 +234,21 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       };
       return { ...s, items: nextItems };
     });
-    pushEventAndNotif(item, type, qty, "out");
+
+    const at = Date.now();
+    const id = `${at}-${Math.random().toString(36).slice(2, 7)}`;
+    pushEventAndNotif({ id, item, type, qty, kind: "out", at });
+
     if (hitZero) {
-      const at = Date.now();
-      const id = `m-${at}-${Math.random().toString(36).slice(2, 7)}`;
+      const mid = `m-${at}-${Math.random().toString(36).slice(2, 7)}`;
       setState((s) => ({
         ...s,
-        messages: [{ id, text: `Out of stock: ${item} • ${type}`, checked: false, at }, ...s.messages].slice(0, 50),
+        messages: [{ id: mid, text: `Out of stock: ${item} • ${type}`, checked: false, at }, ...s.messages].slice(0, 50),
       }));
     }
   };
 
-  const getQty = (item: string, type: string) => {
-    return state.items[item]?.[type] ?? 0;
-  };
+  const getQty = (item: string, type: string) => state.items[item]?.[type] ?? 0;
 
   const clearNotifications = () => {
     setState((s) => ({ ...s, notifications: [] }));

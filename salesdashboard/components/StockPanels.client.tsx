@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import { useState } from "react";
 import { useInventory } from "@/lib/inventory-store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,8 +14,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ChevronDown, Plus, Trash2 } from "lucide-react";
+import * as XLSX from "xlsx";
 
-/* ---------- small internal component ---------- */
+/* ---------- small dropdown helper ---------- */
 function ItemDropdown({
   selected,
   onSelect,
@@ -32,26 +32,20 @@ function ItemDropdown({
   options: string[];
   label: string;
 }) {
-  const [newName, setNewName] = useState("");
+  const [newName, setNewName] = React.useState("");
   return (
     <div className="flex items-center gap-2">
       <DropdownMenu>
         <DropdownMenuTrigger className="inline-flex items-center gap-2 bg-neutral-900 border border-neutral-800 text-neutral-200 px-3 py-2 rounded-md text-sm">
           <span className="text-neutral-400">{label}:</span>
-          <span className="font-medium text-neutral-100">
-            {selected ?? "Select"}
-          </span>
+          <span className="font-medium text-neutral-100">{selected ?? "Select"}</span>
           <ChevronDown size={14} className="text-neutral-500" />
         </DropdownMenuTrigger>
         <DropdownMenuContent className="min-w-56 bg-[#121317] border-neutral-800 text-neutral-100">
           <DropdownMenuLabel className="text-neutral-400">Choose</DropdownMenuLabel>
           <DropdownMenuSeparator />
           {options.map((o) => (
-            <DropdownMenuItem
-              key={o}
-              onClick={() => onSelect(o)}
-              className="flex items-center justify-between"
-            >
+            <DropdownMenuItem key={o} onClick={() => onSelect(o)} className="flex items-center justify-between">
               {o}
               <button
                 onClick={(e) => {
@@ -94,184 +88,114 @@ function ItemDropdown({
   );
 }
 
-/* ======================= MAIN ======================= */
+/* ---------------- main panel ----------------- */
 export default function StockPanels() {
   const inv = useInventory();
 
-  // Shared selectors
-  const [item, setItem] = useState<string | undefined>(
-    Object.keys(inv.state.items)[0]
-  );
-  const [type, setType] = useState("");
-  const types: string[] = item ? Object.keys(inv.state.items[item] ?? {}) : [];
-  const qtyAvailable =
-    item && type && inv.state.items[item] && inv.state.items[item][type] !== undefined
-      ? inv.state.items[item][type]
+  const [item, setItem] = React.useState<string | undefined>(Object.keys(inv.state.items)[0]);
+  const [type, setType] = React.useState("");
+  const types = item ? Object.keys(inv.state.items[item] ?? {}) : [];
+
+  const qtySelected =
+    item && type && inv.state.items[item] && inv.state.items[item][type] && typeof inv.state.items[item][type] === "number"
+      ? (inv.state.items[item][type] as number)
       : 0;
 
-  /* ---------- STOCK IN state ---------- */
-  const [searchIn, setSearchIn] = useState("");
-  const [showSearch, setShowSearch] = useState(false);
-  const filteredItems: string[] = Object.keys(inv.state.items).filter((n) =>
-    n.toLowerCase().includes(searchIn.toLowerCase())
+  // STOCK IN fields
+  const [qin, setQin] = React.useState<number>(0);
+  const [sourceIn, setSourceIn] = React.useState<string>(inv.state.sources[0] ?? "");
+  const [priceIn, setPriceIn] = React.useState<string>(""); // optional
+  const [dateIn, setDateIn] = React.useState<string>(new Date().toISOString().slice(0, 10)); // yyyy-mm-dd
+  const [invoiceIn, setInvoiceIn] = React.useState<string>("");
+
+  // STOCK OUT
+  const [qout, setQout] = React.useState<number>(0);
+
+  // Supplier Report
+  const [reportResults, setReportResults] = React.useState<
+    Array<{ id: string; at: number; item: string; type: string; qty: number; price?: number; source?: string; invoice?: string }>
+  >([]);
+  const [reportSource, setReportSource] = React.useState<string>("");
+  const [reportFrom, setReportFrom] = React.useState<string>("");
+  const [reportTo, setReportTo] = React.useState<string>("");
+
+  // search (optional, minimal)
+  const [searchIn, setSearchIn] = React.useState("");
+  const [searchMenuOpen, setSearchMenuOpen] = React.useState(false);
+  const filteredItems: string[] = Object.keys(inv.state.items).filter((name) =>
+    name.toLowerCase().includes(searchIn.toLowerCase())
   );
 
-  const [inQty, setInQty] = useState<number>(0);
-  const [inSource, setInSource] = useState<string>(inv.state.sources[0] ?? "");
-  const [newSource, setNewSource] = useState<string>("");
-  const [inPrice, setInPrice] = useState<number | "">("");
-
-  const handleAddSource = () => {
-    const name = newSource.trim();
-    if (!name) return;
-    inv.addSource(name);
-    setInSource(name);
-    setNewSource("");
-  };
-
+  /* ---------- actions ---------- */
   const handleStockIn = () => {
-    if (!item || !type || !inQty || inQty <= 0) return;
-    inv.stockIn(
-      item,
-      type,
-      inQty,
-      inSource || undefined,
-      typeof inPrice === "number" ? inPrice : undefined
-    );
-    setInQty(0);
-    setInPrice("");
+    if (!item || !type || qin <= 0) return;
+    const atMs = dateIn ? new Date(dateIn + "T00:00:00").getTime() : undefined;
+    const priceNum = priceIn.trim() ? Number(priceIn) : undefined;
+
+    inv.stockIn(item, type, qin, sourceIn || undefined, priceNum, atMs, invoiceIn || undefined);
+    setQin(0);
+    setInvoiceIn("");
   };
 
-  /* ---------- STOCK OUT state ---------- */
-  const [qout, setQout] = useState(0);
-
-  /* ---------- Supplier report: ALL events, supplier optional ---------- */
-  const [reportResults, setReportResults] = useState<
-    Array<{
-      id: string;
-      at: string | number;
-      kind: "in" | "out";
-      item: string;
-      type: string;
-      qty: number;
-      price?: number;
-      source?: string;
-    }>
-  >([]);
-  const [reportSource, setReportSource] = useState<string>(""); // "" = All suppliers
-  const [reportFrom, setReportFrom] = useState("");
-  const [reportTo, setReportTo] = useState("");
+  const handleStockOut = () => {
+    if (!item || !type || qout <= 0) return;
+    inv.stockOut(item, type, qout);
+    setQout(0);
+  };
 
   const handleGenerateReport = () => {
-    const fromMs =
-      reportFrom && !Number.isNaN(new Date(reportFrom).getTime())
-        ? new Date(reportFrom).setHours(0, 0, 0, 0)
-        : -Infinity;
-    const toMs =
-      reportTo && !Number.isNaN(new Date(reportTo).getTime())
-        ? new Date(reportTo).setHours(23, 59, 59, 999)
-        : Infinity;
+    const fromMs = reportFrom ? new Date(reportFrom + "T00:00:00").getTime() : -Infinity;
+    const toMs = reportTo ? new Date(reportTo + "T23:59:59").getTime() : Infinity;
+    const src = reportSource.trim();
 
     const rows = inv.state.events
-      // include BOTH "in" and "out"
+      .filter((e) => e.kind === "in")
+      .filter((e) => (src ? e.source === src : true))
       .filter((e) => e.at >= fromMs && e.at <= toMs)
-      // only filter by supplier if one is selected; events without a source
-      // are excluded when a supplier is selected
-      .filter((e) => (reportSource ? e.source === reportSource : true))
       .sort((a, b) => a.at - b.at)
       .map((e) => ({
         id: e.id,
         at: e.at,
-        kind: e.kind,
         item: e.item,
         type: e.type,
         qty: e.qty,
         price: e.price,
         source: e.source,
+        invoice: e.invoice,
       }));
 
     setReportResults(rows);
   };
 
-  const handleDownloadExcel = async () => {
-    const XLSX = await import("xlsx");
-
-    if (!reportResults.length) {
-      alert("No report data available. Generate a report first.");
-      return;
-    }
-
-    const reportRows = reportResults.map((r) => ({
-      Date: new Date(r.at).toLocaleString(),
-      Kind: r.kind,
-      Supplier: r.source ?? "",
-      Item: r.item,
-      Type: r.type,
-      Quantity: r.qty,
-      Price: r.price ?? "",
-    }));
-
-    const wsReport = XLSX.utils.json_to_sheet(reportRows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, wsReport, "Report");
-
-    const src = reportSource || "All";
-    const filename = `report_${src}_${reportFrom || "start"}_${reportTo || "end"}.xlsx`;
-    XLSX.writeFile(wb, filename, { compression: true });
-  };
+  const handleDownloadExcel = () => {
+  const aoa = [
+    ["DATE (stock in)", "Invoice No.", "Item", "Type", "Quantity", "Price", "Supplier"],
+    ...reportResults.map((r) => [
+      new Date(r.at).toLocaleString(),
+      r.invoice ?? "",
+      r.item,
+      r.type,
+      r.qty,
+      r.price ?? "",
+      r.source ?? "",
+    ]),
+  ];
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  XLSX.utils.book_append_sheet(wb, ws, "Supplier Report");
+  XLSX.writeFile(wb, `supplier-report${reportSource ? "-" + reportSource : ""}.xlsx`);
+};
 
   return (
     <div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* ================= STOCK IN ================= */}
+        {/* STOCK IN */}
         <Card className="bg-neutral-900/60 border-neutral-800">
           <CardHeader>
-            <CardTitle className="text-xs tracking-wider text-neutral-400">
-              STOCK IN
-            </CardTitle>
+            <CardTitle className="text-xs tracking-wider text-neutral-400">STOCK IN</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {/* Quick item search */}
-            <div className="flex items-center gap-2 mb-2 relative">
-              <Input
-                type="text"
-                value={searchIn}
-                onChange={(e) => setSearchIn(e.target.value)}
-                placeholder="Search item name..."
-                className="bg-neutral-900 border border-neutral-800 rounded px-3 py-2 text-neutral-100 placeholder:text-neutral-500 w-64"
-              />
-              <Button
-                size="sm"
-                className="bg-blue-600 hover:bg-blue-500"
-                onClick={() => setShowSearch(true)}
-              >
-                Search
-              </Button>
-              {showSearch && (
-                <div className="absolute top-full left-0 mt-2 z-10 bg-[#121317] border border-neutral-800 rounded shadow-lg min-w-64">
-                  {filteredItems.length === 0 ? (
-                    <div className="p-3 text-neutral-400">No items found</div>
-                  ) : (
-                    <div>
-                      {filteredItems.map((name) => (
-                        <div
-                          key={name}
-                          className="px-4 py-2 cursor-pointer hover:bg-neutral-800 text-neutral-100"
-                          onClick={() => {
-                            setItem(name);
-                            setShowSearch(false);
-                          }}
-                        >
-                          {name}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Actual Stock-In controls */}
+            {/* Item/Type */}
             <ItemDropdown
               label="Item"
               selected={item}
@@ -284,7 +208,6 @@ export default function StockPanels() {
               onRemove={(name) => inv.removeItem(name)}
               options={Object.keys(inv.state.items)}
             />
-
             <ItemDropdown
               label="Type"
               selected={type}
@@ -294,71 +217,64 @@ export default function StockPanels() {
               options={types}
             />
 
-            <div className="flex items-center gap-2">
+            {/* Quantity */}
+            <Input
+              type="number"
+              value={qin}
+              onChange={(e) => setQin(Number(e.target.value))}
+              placeholder="Quantity to add"
+              className="bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500"
+            />
+
+            {/* Supplier + Price */}
+            <div className="flex gap-2">
+              <select
+                value={sourceIn}
+                onChange={(e) => setSourceIn(e.target.value)}
+                className="flex-1 bg-neutral-900 border border-neutral-800 rounded px-3 py-2 text-neutral-100"
+              >
+                {inv.state.sources.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
               <Input
-                type="number"
-                value={inQty}
-                onChange={(e) => setInQty(Number(e.target.value))}
-                placeholder="Quantity to add"
-                className="w-40 bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500"
-              />
-              <Input
-                type="number"
-                value={inPrice}
-                onChange={(e) =>
-                  setInPrice(e.target.value === "" ? "" : Number(e.target.value))
-                }
+                value={priceIn}
+                onChange={(e) => setPriceIn(e.target.value)}
                 placeholder="Price (optional)"
-                className="w-44 bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500"
+                className="flex-1 bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500"
               />
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={inSource}
-                onChange={(e) => setInSource(e.target.value)}
-                className="bg-neutral-900 border border-neutral-800 rounded px-3 py-2 text-neutral-100"
-              >
-                {inv.state.sources.map((src) => (
-                  <option key={src} value={src}>
-                    {src}
-                  </option>
-                ))}
-                {!inv.state.sources.length && (
-                  <option value="">No sources</option>
-                )}
-              </select>
-
-              <Input
-                value={newSource}
-                onChange={(e) => setNewSource(e.target.value)}
-                placeholder="Add new supplier"
-                className="w-48 bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500"
+            {/* NEW: Date + Invoice */}
+            <div className="flex gap-2">
+              <input
+                type="date"
+                value={dateIn}
+                onChange={(e) => setDateIn(e.target.value)}
+                className="flex-1 bg-neutral-900 border border-neutral-800 rounded px-3 py-2 text-neutral-100"
               />
-              <Button
-                size="sm"
-                className="bg-slate-700 hover:bg-slate-600"
-                onClick={handleAddSource}
-              >
-                Add Supplier
-              </Button>
+              <Input
+                value={invoiceIn}
+                onChange={(e) => setInvoiceIn(e.target.value)}
+                placeholder="Invoice No."
+                className="flex-1 bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500"
+              />
+            </div>
 
-              <Button
-                className="ml-auto bg-green-600 hover:bg-green-500"
-                onClick={handleStockIn}
-              >
+            <div className="flex gap-2">
+              <Button className="bg-blue-600 hover:bg-blue-500" onClick={handleStockIn}>
                 Add Stock
               </Button>
             </div>
           </CardContent>
         </Card>
 
-        {/* ================= STOCK OUT ================= */}
+        {/* STOCK OUT */}
         <Card className="bg-neutral-900/60 border-neutral-800">
           <CardHeader>
-            <CardTitle className="text-xs tracking-wider text-neutral-400">
-              STOCK OUT
-            </CardTitle>
+            <CardTitle className="text-xs tracking-wider text-neutral-400">STOCK OUT</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <ItemDropdown
@@ -376,9 +292,9 @@ export default function StockPanels() {
             <ItemDropdown
               label="Type"
               selected={type}
-              onSelect={(v: string) => setType(v)}
-              onAdd={(name: string) => item && inv.addType(item, name)}
-              onRemove={(name: string) => item && inv.removeType(item, name)}
+              onSelect={(v) => setType(v)}
+              onAdd={(name) => item && inv.addType(item, name)}
+              onRemove={(name) => item && inv.removeType(item, name)}
               options={types}
             />
             <Input
@@ -386,32 +302,21 @@ export default function StockPanels() {
               value={qout}
               onChange={(e) => setQout(Number(e.target.value))}
               placeholder="Quantity to remove"
-              className="flex-1 bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500"
+              className="bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500"
             />
-            <Button
-              className="bg-orange-500 hover:bg-orange-400"
-              onClick={() => {
-                if (item && type && qout > 0) {
-                  inv.stockOut(item, type, qout);
-                  setQout(0);
-                }
-              }}
-            >
+            <Button className="bg-orange-500 hover:bg-orange-400" onClick={handleStockOut}>
               Remove
             </Button>
             <div className="text-xs text-neutral-400">
-              Selected available:{" "}
-              <span className="text-neutral-100">{qtyAvailable}</span>
+              Selected available: <span className="text-neutral-100">{qtySelected}</span>
             </div>
           </CardContent>
         </Card>
 
-        {/* ================= TOTAL STOCK ================= */}
+        {/* TOTAL STOCK */}
         <Card className="bg-neutral-900/60 border-neutral-800">
           <CardHeader>
-            <CardTitle className="text-xs tracking-wider text-neutral-400">
-              TOTAL STOCK
-            </CardTitle>
+            <CardTitle className="text-xs tracking-wider text-neutral-400">TOTAL STOCK</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <ItemDropdown
@@ -429,26 +334,23 @@ export default function StockPanels() {
             <ItemDropdown
               label="Type"
               selected={type}
-              onSelect={(v: string) => setType(v)}
-              onAdd={(name: string) => item && inv.addType(item, name)}
-              onRemove={(name: string) => item && inv.removeType(item, name)}
+              onSelect={(v) => setType(v)}
+              onAdd={(name) => item && inv.addType(item, name)}
+              onRemove={(name) => item && inv.removeType(item, name)}
               options={types}
             />
             <div className="bg-neutral-900 border border-neutral-800 rounded-md p-3">
               <div className="text-xs text-neutral-400">Quantity available</div>
-              <div className="mt-1 text-3xl font-extrabold text-white">
-                {qtyAvailable}
-              </div>
+              <div className="mt-1 text-3xl font-extrabold text-white">{qtySelected}</div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* ================= Supplier Report ================= */}
+      {/* Supplier Report */}
       <div className="mt-8 bg-neutral-900/60 border border-neutral-800 rounded-md p-6">
-        <h2 className="text-xs tracking-wider text-neutral-400 mb-4">
-          Supplier Report
-        </h2>
+        <h2 className="text-xs tracking-wider text-neutral-400 mb-4">Supplier Report</h2>
+
         <div className="flex flex-wrap gap-4 mb-4">
           <div>
             <label className="block text-xs text-neutral-400 mb-1">From</label>
@@ -456,7 +358,7 @@ export default function StockPanels() {
               type="date"
               value={reportFrom}
               onChange={(e) => setReportFrom(e.target.value)}
-              className="bg-neutral-900 border-neutral-800 rounded px-3 py-2 text-neutral-100"
+              className="bg-neutral-900 border border-neutral-800 rounded px-3 py-2 text-neutral-100"
             />
           </div>
           <div>
@@ -465,25 +367,26 @@ export default function StockPanels() {
               type="date"
               value={reportTo}
               onChange={(e) => setReportTo(e.target.value)}
-              className="bg-neutral-900 border-neutral-800 rounded px-3 py-2 text-neutral-100"
+              className="bg-neutral-900 border border-neutral-800 rounded px-3 py-2 text-neutral-100"
             />
           </div>
+          <div className="min-w-[220px]">
+            <label className="block text-xs text-neutral-400 mb-1">Supplier</label>
+            <select
+              value={reportSource}
+              onChange={(e) => setReportSource(e.target.value)}
+              className="w-full bg-neutral-900 border border-neutral-800 rounded px-3 py-2 text-neutral-100"
+            >
+              <option value="">All</option>
+              {inv.state.sources.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
-        <div className="mb-4">
-          <label className="block text-xs text-neutral-400 mb-1">Supplier</label>
-          <select
-            value={reportSource}
-            onChange={(e) => setReportSource(e.target.value)}
-            className="bg-neutral-900 border-neutral-800 rounded px-3 py-2 text-neutral-100"
-          >
-            <option value="">All suppliers</option>
-            {inv.state.sources.map((src) => (
-              <option key={src} value={src}>
-                {src}
-              </option>
-            ))}
-          </select>
-        </div>
+
         <div className="flex gap-4 mb-4">
           <Button className="bg-blue-600 hover:bg-blue-500" onClick={handleGenerateReport}>
             Generate Report
@@ -493,42 +396,38 @@ export default function StockPanels() {
           </Button>
         </div>
 
+        {/* Table */}
         {reportResults.length > 0 ? (
-          <div className="mt-4">
-            <h3 className="text-xs text-neutral-400 mb-2">
-              Report for {reportSource || "All suppliers"} ({reportFrom || "start"} to {reportTo || "end"})
-            </h3>
+          <div className="mt-4 overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-neutral-400">
                   <th className="px-2 py-1 text-left">Date</th>
-                  <th className="px-2 py-1 text-left">Kind</th>
-                  <th className="px-2 py-1 text-left">Supplier</th>
                   <th className="px-2 py-1 text-left">Item</th>
                   <th className="px-2 py-1 text-left">Type</th>
                   <th className="px-2 py-1 text-left">Quantity</th>
                   <th className="px-2 py-1 text-left">Price</th>
+                  <th className="px-2 py-1 text-left">Supplier</th>
+                  <th className="px-2 py-1 text-left">Invoice No.</th>
                 </tr>
               </thead>
               <tbody>
                 {reportResults.map((e) => (
                   <tr key={e.id} className="border-b border-neutral-800">
                     <td className="px-2 py-1">{new Date(e.at).toLocaleString()}</td>
-                    <td className="px-2 py-1">{e.kind === "in" ? "Stock In" : "Stock Out"}</td>
-                    <td className="px-2 py-1">{e.source ?? ""}</td>
                     <td className="px-2 py-1">{e.item}</td>
                     <td className="px-2 py-1">{e.type}</td>
                     <td className="px-2 py-1">{e.qty}</td>
-                    <td className="px-2 py-1">₹{e.price ?? "-"}</td>
+                    <td className="px-2 py-1">{e.price ?? "-"}</td>
+                    <td className="px-2 py-1">{e.source ?? "-"}</td>
+                    <td className="px-2 py-1">{e.invoice ?? "-"}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         ) : (
-          <div className="mt-4 text-neutral-400 text-sm">
-            No report rows yet. Set dates/supplier (optional) and click <b>Generate Report</b>.
-          </div>
+          <div className="mt-4 text-[13px] text-neutral-400">No results yet.</div>
         )}
       </div>
     </div>
