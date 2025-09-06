@@ -16,7 +16,6 @@ import {
 import { ChevronDown, Plus, Trash2 } from "lucide-react";
 import * as XLSX from "xlsx";
 
-/* ---------- small dropdown helper ---------- */
 function ItemDropdown({
   selected,
   onSelect,
@@ -88,7 +87,6 @@ function ItemDropdown({
   );
 }
 
-/* ---------------- main panel ----------------- */
 export default function StockPanels() {
   const inv = useInventory();
 
@@ -97,14 +95,14 @@ export default function StockPanels() {
   const types = item ? Object.keys(inv.state.items[item] ?? {}) : [];
 
   const qtySelected =
-    item && type && inv.state.items[item] && inv.state.items[item][type] && typeof inv.state.items[item][type] === "number"
+    item && type && inv.state.items[item] && typeof inv.state.items[item][type] === "number"
       ? (inv.state.items[item][type] as number)
       : 0;
 
   // STOCK IN fields
   const [qin, setQin] = React.useState<number>(0);
   const [sourceIn, setSourceIn] = React.useState<string>(inv.state.sources[0] ?? "");
-  const [priceIn, setPriceIn] = React.useState<string>(""); // optional
+  const [priceIn, setPriceIn] = React.useState<string>("");
   const [dateIn, setDateIn] = React.useState<string>(new Date().toISOString().slice(0, 10)); // yyyy-mm-dd
   const [invoiceIn, setInvoiceIn] = React.useState<string>("");
 
@@ -119,19 +117,10 @@ export default function StockPanels() {
   const [reportFrom, setReportFrom] = React.useState<string>("");
   const [reportTo, setReportTo] = React.useState<string>("");
 
-  // search (optional, minimal)
-  const [searchIn, setSearchIn] = React.useState("");
-  const [searchMenuOpen, setSearchMenuOpen] = React.useState(false);
-  const filteredItems: string[] = Object.keys(inv.state.items).filter((name) =>
-    name.toLowerCase().includes(searchIn.toLowerCase())
-  );
-
-  /* ---------- actions ---------- */
   const handleStockIn = () => {
     if (!item || !type || qin <= 0) return;
     const atMs = dateIn ? new Date(dateIn + "T00:00:00").getTime() : undefined;
     const priceNum = priceIn.trim() ? Number(priceIn) : undefined;
-
     inv.stockIn(item, type, qin, sourceIn || undefined, priceNum, atMs, invoiceIn || undefined);
     setQin(0);
     setInvoiceIn("");
@@ -168,23 +157,23 @@ export default function StockPanels() {
   };
 
   const handleDownloadExcel = () => {
-  const aoa = [
-    ["DATE (stock in)", "Invoice No.", "Item", "Type", "Quantity", "Price", "Supplier"],
-    ...reportResults.map((r) => [
-      new Date(r.at).toLocaleString(),
-      r.invoice ?? "",
-      r.item,
-      r.type,
-      r.qty,
-      r.price ?? "",
-      r.source ?? "",
-    ]),
-  ];
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-  XLSX.utils.book_append_sheet(wb, ws, "Supplier Report");
-  XLSX.writeFile(wb, `supplier-report${reportSource ? "-" + reportSource : ""}.xlsx`);
-};
+    const aoa = [
+      ["DATE (stock in)", "Invoice No.", "Item", "Type", "Quantity", "Price", "Supplier"],
+      ...reportResults.map((r) => [
+        new Date(r.at).toLocaleString(),
+        r.invoice ?? "",
+        r.item,
+        r.type,
+        r.qty,
+        r.price ?? "",
+        r.source ?? "",
+      ]),
+    ];
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    XLSX.utils.book_append_sheet(wb, ws, "Supplier Report");
+    XLSX.writeFile(wb, `supplier-report${reportSource ? "-" + reportSource : ""}.xlsx`);
+  };
 
   return (
     <div>
@@ -195,7 +184,6 @@ export default function StockPanels() {
             <CardTitle className="text-xs tracking-wider text-neutral-400">STOCK IN</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {/* Item/Type */}
             <ItemDropdown
               label="Item"
               selected={item}
@@ -216,8 +204,6 @@ export default function StockPanels() {
               onRemove={(name) => item && inv.removeType(item, name)}
               options={types}
             />
-
-            {/* Quantity */}
             <Input
               type="number"
               value={qin}
@@ -225,8 +211,6 @@ export default function StockPanels() {
               placeholder="Quantity to add"
               className="bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500"
             />
-
-            {/* Supplier + Price */}
             <div className="flex gap-2">
               <select
                 value={sourceIn}
@@ -246,8 +230,6 @@ export default function StockPanels() {
                 className="flex-1 bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500"
               />
             </div>
-
-            {/* NEW: Date + Invoice */}
             <div className="flex gap-2">
               <input
                 type="date"
@@ -262,7 +244,6 @@ export default function StockPanels() {
                 className="flex-1 bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500"
               />
             </div>
-
             <div className="flex gap-2">
               <Button className="bg-blue-600 hover:bg-blue-500" onClick={handleStockIn}>
                 Add Stock
@@ -396,31 +377,30 @@ export default function StockPanels() {
           </Button>
         </div>
 
-        {/* Table */}
         {reportResults.length > 0 ? (
           <div className="mt-4 overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-neutral-400">
-                  <th className="px-2 py-1 text-left">Date</th>
+                  <th className="px-2 py-1 text-left">DATE (stock in)</th>
+                  <th className="px-2 py-1 text-left">Invoice No.</th>
                   <th className="px-2 py-1 text-left">Item</th>
                   <th className="px-2 py-1 text-left">Type</th>
                   <th className="px-2 py-1 text-left">Quantity</th>
                   <th className="px-2 py-1 text-left">Price</th>
                   <th className="px-2 py-1 text-left">Supplier</th>
-                  <th className="px-2 py-1 text-left">Invoice No.</th>
                 </tr>
               </thead>
               <tbody>
                 {reportResults.map((e) => (
                   <tr key={e.id} className="border-b border-neutral-800">
                     <td className="px-2 py-1">{new Date(e.at).toLocaleString()}</td>
+                    <td className="px-2 py-1">{e.invoice ?? "-"}</td>
                     <td className="px-2 py-1">{e.item}</td>
                     <td className="px-2 py-1">{e.type}</td>
                     <td className="px-2 py-1">{e.qty}</td>
                     <td className="px-2 py-1">{e.price ?? "-"}</td>
                     <td className="px-2 py-1">{e.source ?? "-"}</td>
-                    <td className="px-2 py-1">{e.invoice ?? "-"}</td>
                   </tr>
                 ))}
               </tbody>

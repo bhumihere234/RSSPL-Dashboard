@@ -10,10 +10,10 @@ export type InventoryEvent = {
   type: string;
   qty: number;
   kind: EventKind;
-  at: number;          // milliseconds since epoch (date of the event)
-  source?: string;     // supplier/source
+  at: number;          // ms since epoch
+  source?: string;     // supplier
   price?: number;
-  invoice?: string;    // <-- NEW: invoice number
+  invoice?: string;    // NEW
 };
 
 export type Notification = {
@@ -31,8 +31,7 @@ export type Message = {
 };
 
 export type InventoryState = {
-  // item -> type -> qty
-  items: Record<string, Record<string, number>>;
+  items: Record<string, Record<string, number>>; // item -> type -> qty
   events: InventoryEvent[];
   notifications: Notification[];
   messages: Message[];
@@ -47,8 +46,6 @@ type Ctx = {
   removeType: (item: string, type: string) => void;
   addSource: (name: string) => void;
   removeSource: (name: string) => void;
-
-  // NOTE: extended signature to include optional atMs + invoice
   stockIn: (
     item: string,
     type: string,
@@ -59,7 +56,6 @@ type Ctx = {
     invoice?: string
   ) => void;
   stockOut: (item: string, type: string, qty: number) => void;
-
   getQty: (item: string, type: string) => number;
   clearNotifications: () => void;
   resolveMessage: (id: string) => void;
@@ -72,9 +68,29 @@ const defaultState: InventoryState = {
     Gloves: { Latex: 0, Nitrile: 25 },
   },
   events: [
-    { id: "e1", item: "Boxes", type: "Small", qty: 20, kind: "in", at: Date.now() - 1000 * 60 * 60 * 24 * 5, source: "Warehouse", price: 100, invoice: "INV-1001" },
+    {
+      id: "e1",
+      item: "Boxes",
+      type: "Small",
+      qty: 20,
+      kind: "in",
+      at: Date.now() - 1000 * 60 * 60 * 24 * 5,
+      source: "Warehouse",
+      price: 100,
+      invoice: "INV-1001",
+    },
     { id: "e2", item: "Boxes", type: "Small", qty: 10, kind: "out", at: Date.now() - 1000 * 60 * 60 * 24 * 4 },
-    { id: "e3", item: "Tapes", type: "Clear", qty: 10, kind: "in", at: Date.now() - 1000 * 60 * 60 * 24 * 3, source: "Supplier", price: 50, invoice: "INV-1002" },
+    {
+      id: "e3",
+      item: "Tapes",
+      type: "Clear",
+      qty: 10,
+      kind: "in",
+      at: Date.now() - 1000 * 60 * 60 * 24 * 3,
+      source: "Supplier",
+      price: 50,
+      invoice: "INV-1002",
+    },
     { id: "e4", item: "Gloves", type: "Latex", qty: 10, kind: "out", at: Date.now() - 1000 * 60 * 60 * 24 * 2 },
   ],
   notifications: [],
@@ -88,8 +104,7 @@ function loadState(): InventoryState {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return defaultState;
-    const parsed = JSON.parse(raw) as InventoryState;
-    return parsed;
+    return JSON.parse(raw) as InventoryState;
   } catch {
     return defaultState;
   }
@@ -99,7 +114,7 @@ function saveState(state: InventoryState) {
   try {
     localStorage.setItem(KEY, JSON.stringify(state));
   } catch {
-    // ignore quota errors
+    // ignore
   }
 }
 
@@ -111,13 +126,13 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
   const addSource = (name: string) => {
     if (!name) return;
     setState((s) => {
-      if (s.sources && s.sources.includes(name)) return s;
-      return { ...s, sources: s.sources ? [...s.sources, name] : [name] };
+      if (s.sources.includes(name)) return s;
+      return { ...s, sources: [...s.sources, name] };
     });
   };
 
   const removeSource = (name: string) => {
-    setState((s) => ({ ...s, sources: s.sources ? s.sources.filter((sname) => sname !== name) : [] }));
+    setState((s) => ({ ...s, sources: s.sources.filter((sname) => sname !== name) }));
   };
 
   React.useEffect(() => {
@@ -138,7 +153,7 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
 
   const removeItem = (name: string) => {
     setState((s) => {
-      const { [name]: _, ...rest } = s.items;
+      const rest = Object.fromEntries(Object.entries(s.items).filter(([k]) => k !== name));
       return { ...s, items: rest };
     });
   };
@@ -146,17 +161,17 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
   const addType = (item: string, type: string) => {
     if (!item || !type) return;
     setState((s) => {
-      const existingItem = s.items[item] || {};
-      if (existingItem[type] != null) return s;
-      return { ...s, items: { ...s.items, [item]: { ...existingItem, [type]: 0 } } };
+      const existing = s.items[item] || {};
+      if (existing[type] != null) return s;
+      return { ...s, items: { ...s.items, [item]: { ...existing, [type]: 0 } } };
     });
   };
 
   const removeType = (item: string, type: string) => {
     setState((s) => {
-      const existingItem = s.items[item];
-      if (!existingItem) return s;
-      const { [type]: _, ...restTypes } = existingItem;
+      const existing = s.items[item];
+      if (!existing) return s;
+      const restTypes = Object.fromEntries(Object.entries(existing).filter(([k]) => k !== type));
       return { ...s, items: { ...s.items, [item]: restTypes } };
     });
   };
@@ -182,7 +197,6 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
     }));
   };
 
-  // EXTENDED: atMs + invoice are optional
   const stockIn = (
     item: string,
     type: string,
@@ -197,11 +211,7 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
     setState((s) => {
       const itemMap = s.items[item] || {};
       const current = itemMap[type] ?? 0;
-      const nextItems = {
-        ...s.items,
-        [item]: { ...itemMap, [type]: current + qty },
-      };
-      return { ...s, items: nextItems };
+      return { ...s, items: { ...s.items, [item]: { ...itemMap, [type]: current + qty } } };
     });
 
     const at = typeof atMs === "number" && !Number.isNaN(atMs) ? atMs : Date.now();
@@ -222,17 +232,14 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
 
   const stockOut = (item: string, type: string, qty: number) => {
     if (!qty || qty <= 0) return;
+
     let hitZero = false;
     setState((s) => {
       const itemMap = s.items[item] || {};
       const current = itemMap[type] ?? 0;
       const newQty = Math.max(0, current - qty);
       hitZero = current > 0 && newQty === 0;
-      const nextItems = {
-        ...s.items,
-        [item]: { ...itemMap, [type]: newQty },
-      };
-      return { ...s, items: nextItems };
+      return { ...s, items: { ...s.items, [item]: { ...itemMap, [type]: newQty } } };
     });
 
     const at = Date.now();
@@ -243,7 +250,10 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       const mid = `m-${at}-${Math.random().toString(36).slice(2, 7)}`;
       setState((s) => ({
         ...s,
-        messages: [{ id: mid, text: `Out of stock: ${item} • ${type}`, checked: false, at }, ...s.messages].slice(0, 50),
+        messages: [{ id: mid, text: `Out of stock: ${item} • ${type}`, checked: false, at }, ...s.messages].slice(
+          0,
+          50
+        ),
       }));
     }
   };
