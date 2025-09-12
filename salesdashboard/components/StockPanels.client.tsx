@@ -119,7 +119,7 @@ const SupplierDropdown = (props: Omit<GenericDropdownProps, "label">) => (
 /* --------------------------- Types for report --------------------------- */
 type ReportRow = {
   id: string;
-  at: number;          // ms since epoch
+  at: number;          // ms since epoch (this will be the selected stock-in date if provided)
   item: string;
   type: string;
   qty: number;
@@ -145,7 +145,7 @@ export default function StockPanels() {
 
   // Stock In
   const [qin, setQin] = React.useState<number>(0);
-  const [stockInDate, setStockInDate] = React.useState<string>(""); // yyyy-mm-dd (kept for UI only)
+  const [stockInDate, setStockInDate] = React.useState<string>(""); // yyyy-mm-dd
   const [invoiceNo, setInvoiceNo] = React.useState<string>("");
   const [stockInSource, setStockInSource] = React.useState<string>(
     inv.state.sources[0] ?? ""
@@ -168,13 +168,20 @@ export default function StockPanels() {
   const handleStockIn = () => {
     if (!item || !type || qin <= 0) return;
 
+    // Convert the selected yyyy-mm-dd to a timestamp (midnight local time)
+    const atMs =
+      stockInDate && !Number.isNaN(Date.parse(stockInDate))
+        ? new Date(`${stockInDate}T00:00:00`).getTime()
+        : undefined;
+
     inv.stockIn(
       item,
       type,
       qin,
       stockInSource || undefined,
       stockInPrice !== "" ? Number(stockInPrice) : undefined,
-      invoiceNo.trim() || undefined
+      invoiceNo.trim() || undefined,
+      atMs // ✅ persist the chosen date (even if it's not today)
     );
 
     // Reset inputs
@@ -200,7 +207,7 @@ export default function StockPanels() {
       .filter((e) => (reportSource !== "All" ? e.source === reportSource : true))
       .map<ReportRow>((e) => ({
         id: e.id,
-        at: e.at,
+        at: e.at,           // this is the selected date if provided during stock-in
         item: e.item,
         type: e.type,
         qty: e.qty,
@@ -214,7 +221,8 @@ export default function StockPanels() {
 
   const handleDownloadExcel = () => {
     const rows = reportResults.map((r) => ({
-      "DATE (stock in)": new Date(r.at).toLocaleString(),
+      "Selected Date": new Date(r.at).toLocaleDateString(), // NEW column (date-only)
+      "DATE (stock in)": new Date(r.at).toLocaleString(),   // existing detailed timestamp
       "Invoice No.": r.invoice ?? "",
       Item: r.item,
       Type: r.type,
@@ -422,6 +430,7 @@ export default function StockPanels() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-neutral-400">
+                  <th className="px-2 py-1 text-left">Selected Date</th> {/* NEW column */}
                   <th className="px-2 py-1 text-left">DATE (stock in)</th>
                   <th className="px-2 py-1 text-left">Invoice No.</th>
                   <th className="px-2 py-1 text-left">Item</th>
@@ -434,6 +443,7 @@ export default function StockPanels() {
               <tbody>
                 {reportResults.map((r) => (
                   <tr key={r.id} className="border-b border-neutral-800">
+                    <td className="px-2 py-1">{new Date(r.at).toLocaleDateString()}</td>
                     <td className="px-2 py-1">{new Date(r.at).toLocaleString()}</td>
                     <td className="px-2 py-1">{r.invoice ?? "-"}</td>
                     <td className="px-2 py-1">{r.item}</td>
