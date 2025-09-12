@@ -13,7 +13,7 @@ export type InventoryEvent = {
   at: number;          // ms since epoch
   source?: string;     // supplier
   price?: number;
-  invoice?: string;    // NEW
+  invoice?: string;
 };
 
 export type Notification = {
@@ -46,15 +46,19 @@ type Ctx = {
   removeType: (item: string, type: string) => void;
   addSource: (name: string) => void;
   removeSource: (name: string) => void;
+
+  // ✅ Reordered to match the component usage:
+  //    (item, type, qty, source?, price?, invoice?, atMs?)
   stockIn: (
     item: string,
     type: string,
     qty: number,
     source?: string,
     price?: number,
-    atMs?: number,
-    invoice?: string
+    invoice?: string,
+    atMs?: number
   ) => void;
+
   stockOut: (item: string, type: string, qty: number) => void;
   getQty: (item: string, type: string) => number;
   clearNotifications: () => void;
@@ -102,6 +106,7 @@ const KEY = "inv-dashboard-state-v1";
 
 function loadState(): InventoryState {
   try {
+    if (typeof window === "undefined") return defaultState;
     const raw = localStorage.getItem(KEY);
     if (!raw) return defaultState;
     return JSON.parse(raw) as InventoryState;
@@ -112,6 +117,7 @@ function loadState(): InventoryState {
 
 function saveState(state: InventoryState) {
   try {
+    if (typeof window === "undefined") return;
     localStorage.setItem(KEY, JSON.stringify(state));
   } catch {
     // ignore
@@ -197,14 +203,15 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
     }));
   };
 
+  // ✅ Reordered implementation to match signature above
   const stockIn = (
     item: string,
     type: string,
     qty: number,
     source?: string,
     price?: number,
-    atMs?: number,
-    invoice?: string
+    invoice?: string,
+    atMs?: number
   ) => {
     if (!qty || qty <= 0) return;
 
