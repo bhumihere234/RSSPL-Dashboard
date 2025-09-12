@@ -119,6 +119,7 @@ type ReportRow = {
   qty: number;
   source?: string;
   invoice?: string;
+  price?: string;
 };
 
 export default function StockPanels() {
@@ -142,6 +143,7 @@ export default function StockPanels() {
   const [stockInSource, setStockInSource] = React.useState<string>(
     inv.state.sources[0] ?? ""
   );
+  const [stockInPrice, setStockInPrice] = React.useState<string>("");
 
   // Report
   const [reportSource, setReportSource] = React.useState<string>("All");
@@ -178,6 +180,7 @@ export default function StockPanels() {
         qty: qin,
         source: stockInSource || undefined,
         invoice: invoiceNo || undefined,
+        price: stockInPrice || undefined,
       },
       ...prev,
     ]);
@@ -185,6 +188,7 @@ export default function StockPanels() {
     // Reset inputs a bit
     setQin(0);
     setInvoiceNo("");
+    setStockInPrice("");
   };
 
   const handleStockOut = () => {
@@ -234,6 +238,7 @@ export default function StockPanels() {
       Type: r.type,
       Quantity: r.qty,
       Supplier: r.source ?? "",
+      Price: r.price ?? "",
     }));
 
     const ws = XLSX.utils.json_to_sheet(rows);
@@ -299,6 +304,13 @@ export default function StockPanels() {
               value={invoiceNo}
               onChange={(e) => setInvoiceNo(e.target.value)}
               placeholder="Invoice No."
+              className="bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500"
+            />
+            <Input
+              type="number"
+              value={stockInPrice}
+              onChange={(e) => setStockInPrice(e.target.value)}
+              placeholder="Price"
               className="bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500"
             />
           </div>
@@ -442,6 +454,7 @@ export default function StockPanels() {
                   <th className="px-2 py-1 text-left">Type</th>
                   <th className="px-2 py-1 text-left">Quantity</th>
                   <th className="px-2 py-1 text-left">Supplier</th>
+                  <th className="px-2 py-1 text-left">Price</th>
                 </tr>
               </thead>
               <tbody>
@@ -453,6 +466,7 @@ export default function StockPanels() {
                     <td className="px-2 py-1">{r.type}</td>
                     <td className="px-2 py-1">{r.qty}</td>
                     <td className="px-2 py-1">{r.source ?? "-"}</td>
+                    <td className="px-2 py-1">{r.price ?? "-"}</td>
                   </tr>
                 ))}
               </tbody>
