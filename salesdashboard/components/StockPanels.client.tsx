@@ -39,25 +39,34 @@ function GenericDropdown({
   onRemove,
 }: GenericDropdownProps) {
   const [newName, setNewName] = React.useState("");
+  const [search, setSearch] = React.useState("");
+  const [showSearch, setShowSearch] = React.useState(label === "Item");
+  const filteredOptions = options.filter((o) =>
+    o.toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
     <div className="flex items-center gap-2">
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            className="inline-flex items-center gap-2 bg-neutral-900 border border-neutral-800 text-neutral-200 px-3 py-2 rounded-md text-sm"
-          >
-            <span className="text-neutral-400">{label}:</span>
-            <span className="font-medium text-neutral-100">{selected ?? "Select"}</span>
-            <ChevronDown size={14} className="text-neutral-500" />
-          </button>
+        <DropdownMenuTrigger className="inline-flex items-center gap-2 bg-neutral-900 border border-neutral-800 text-neutral-200 px-3 py-2 rounded-md text-sm">
+          <span className="text-neutral-400">{label}:</span>
+          <span className="font-medium text-neutral-100">{selected ?? "Select"}</span>
+          <ChevronDown size={14} className="text-neutral-500" />
         </DropdownMenuTrigger>
-
         <DropdownMenuContent className="min-w-56 bg-[#121317] border-neutral-800 text-neutral-100">
+          {showSearch && (
+            <div className="px-2 pt-2 pb-1">
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search..."
+                className="bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500 placeholder:opacity-60"
+              />
+            </div>
+          )}
           <DropdownMenuLabel className="text-neutral-400">Choose</DropdownMenuLabel>
           <DropdownMenuSeparator />
-          {options.map((o) => (
+          {filteredOptions.map((o) => (
             <DropdownMenuItem
               key={o}
               onClick={() => onSelect(o)}
@@ -144,7 +153,7 @@ export default function StockPanels() {
   const [qout, setQout] = React.useState<number>(0);
 
   // Stock In
-  const [qin, setQin] = React.useState<number>(0);
+  const [qin, setQin] = React.useState<string>("");
   const [stockInDate, setStockInDate] = React.useState<string>(""); // yyyy-mm-dd
   const [invoiceNo, setInvoiceNo] = React.useState<string>("");
   const [stockInSource, setStockInSource] = React.useState<string>(
@@ -157,16 +166,31 @@ export default function StockPanels() {
   const [reportFrom, setReportFrom] = React.useState<string>("");
   const [reportTo, setReportTo] = React.useState<string>("");
 
+  // Search term for filtering items
+  const [searchTermIn, setSearchTermIn] = React.useState("");
+  const [searchTermOut, setSearchTermOut] = React.useState("");
+  const [searchTermTotal, setSearchTermTotal] = React.useState<string>("");
+
   // Derived qty
   const qty =
     item && type && inv.state.items[item] && inv.state.items[item][type] !== undefined
       ? inv.state.items[item][type]
       : 0;
 
+  const filteredItemsIn = Object.keys(inv.state.items).filter((name) =>
+    name.toLowerCase().includes(searchTermIn.toLowerCase())
+  );
+  const filteredItemsOut = Object.keys(inv.state.items).filter((name) =>
+    name.toLowerCase().includes(searchTermOut.toLowerCase())
+  );
+  const filteredItemsTotal = Object.keys(inv.state.items).filter((name) =>
+    name.toLowerCase().includes(searchTermTotal.toLowerCase())
+  );
+
   /* ------------------------------ Actions -------------------------------- */
 
   const handleStockIn = () => {
-    if (!item || !type || qin <= 0) return;
+    if (!item || !type || !qin || Number(qin) <= 0) return;
 
     // Convert the selected yyyy-mm-dd to a timestamp (midnight local time)
     const atMs =
@@ -177,7 +201,7 @@ export default function StockPanels() {
     inv.stockIn(
       item,
       type,
-      qin,
+      Number(qin),
       stockInSource || undefined,
       stockInPrice !== "" ? Number(stockInPrice) : undefined,
       invoiceNo.trim() || undefined,
@@ -185,7 +209,7 @@ export default function StockPanels() {
     );
 
     // Reset inputs
-    setQin(0);
+    setQin("");
     setInvoiceNo("");
     setStockInPrice("");
   };
@@ -256,7 +280,7 @@ export default function StockPanels() {
             }}
             onAdd={(name) => inv.addItem(name)}
             onRemove={(name) => inv.removeItem(name)}
-            options={Object.keys(inv.state.items)}
+            options={filteredItemsIn}
           />
 
           <TypeDropdown
@@ -279,9 +303,9 @@ export default function StockPanels() {
             <Input
               type="number"
               value={qin}
-              onChange={(e) => setQin(Number(e.target.value))}
-              placeholder="Quantity to add"
-              className="bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500"
+              onChange={(e) => setQin(e.target.value)}
+              placeholder="Enter the quantity..."
+              className="bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500 placeholder:opacity-60"
             />
             <Input
               type="date"
@@ -327,7 +351,7 @@ export default function StockPanels() {
             }}
             onAdd={(name) => inv.addItem(name)}
             onRemove={(name) => inv.removeItem(name)}
-            options={Object.keys(inv.state.items)}
+            options={filteredItemsOut}
           />
           <TypeDropdown
             selected={type}
@@ -369,7 +393,7 @@ export default function StockPanels() {
             }}
             onAdd={(name) => inv.addItem(name)}
             onRemove={(name) => inv.removeItem(name)}
-            options={Object.keys(inv.state.items)}
+            options={filteredItemsTotal}
           />
           <TypeDropdown
             selected={type}

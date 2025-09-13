@@ -153,7 +153,11 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
     if (!name) return;
     setState((s) => {
       if (s.items[name]) return s;
-      return { ...s, items: { ...s.items, [name]: {} } };
+      // Add item with a default type
+      return {
+        ...s,
+        items: { ...s.items, [name]: { Default: 0 } },
+      };
     });
   };
 
