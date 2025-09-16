@@ -40,7 +40,6 @@ function GenericDropdown({
 }: GenericDropdownProps) {
   const [newName, setNewName] = React.useState("");
   const [search, setSearch] = React.useState("");
-  const [showSearch, setShowSearch] = React.useState(label === "Item");
   const filteredOptions = options.filter((o) =>
     o.toLowerCase().includes(search.toLowerCase())
   );
@@ -54,7 +53,7 @@ function GenericDropdown({
           <ChevronDown size={14} className="text-neutral-500" />
         </DropdownMenuTrigger>
         <DropdownMenuContent className="min-w-56 bg-[#121317] border-neutral-800 text-neutral-100">
-          {showSearch && (
+          {search && (
             <div className="px-2 pt-2 pb-1">
               <Input
                 value={search}
@@ -166,26 +165,11 @@ export default function StockPanels() {
   const [reportFrom, setReportFrom] = React.useState<string>("");
   const [reportTo, setReportTo] = React.useState<string>("");
 
-  // Search term for filtering items
-  const [searchTermIn, setSearchTermIn] = React.useState("");
-  const [searchTermOut, setSearchTermOut] = React.useState("");
-  const [searchTermTotal, setSearchTermTotal] = React.useState<string>("");
-
   // Derived qty
   const qty =
     item && type && inv.state.items[item] && inv.state.items[item][type] !== undefined
       ? inv.state.items[item][type]
       : 0;
-
-  const filteredItemsIn = Object.keys(inv.state.items).filter((name) =>
-    name.toLowerCase().includes(searchTermIn.toLowerCase())
-  );
-  const filteredItemsOut = Object.keys(inv.state.items).filter((name) =>
-    name.toLowerCase().includes(searchTermOut.toLowerCase())
-  );
-  const filteredItemsTotal = Object.keys(inv.state.items).filter((name) =>
-    name.toLowerCase().includes(searchTermTotal.toLowerCase())
-  );
 
   /* ------------------------------ Actions -------------------------------- */
 
@@ -280,7 +264,7 @@ export default function StockPanels() {
             }}
             onAdd={(name) => inv.addItem(name)}
             onRemove={(name) => inv.removeItem(name)}
-            options={filteredItemsIn}
+            options={Object.keys(inv.state.items)}
           />
 
           <TypeDropdown
@@ -351,7 +335,7 @@ export default function StockPanels() {
             }}
             onAdd={(name) => inv.addItem(name)}
             onRemove={(name) => inv.removeItem(name)}
-            options={filteredItemsOut}
+            options={Object.keys(inv.state.items)}
           />
           <TypeDropdown
             selected={type}
@@ -393,7 +377,7 @@ export default function StockPanels() {
             }}
             onAdd={(name) => inv.addItem(name)}
             onRemove={(name) => inv.removeItem(name)}
-            options={filteredItemsTotal}
+            options={Object.keys(inv.state.items)}
           />
           <TypeDropdown
             selected={type}

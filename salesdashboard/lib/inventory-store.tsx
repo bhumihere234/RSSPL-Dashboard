@@ -3,14 +3,9 @@
 import React from "react";
 import { db } from "./firebase";
 import {
-  collection,
   doc,
   getDoc,
-  getDocs,
   setDoc,
-  updateDoc,
-  addDoc,
-  deleteDoc,
   onSnapshot,
 } from "firebase/firestore";
 
@@ -116,16 +111,6 @@ const defaultState: InventoryState = {
 
 const INVENTORY_DOC = "inventory-state";
 const inventoryRef = doc(db, "inventory", INVENTORY_DOC);
-
-async function loadStateFirestore(): Promise<InventoryState> {
-  try {
-    const snap = await getDoc(inventoryRef);
-    if (!snap.exists()) return defaultState;
-    return snap.data() as InventoryState;
-  } catch {
-    return defaultState;
-  }
-}
 
 async function saveStateFirestore(state: InventoryState) {
   try {
