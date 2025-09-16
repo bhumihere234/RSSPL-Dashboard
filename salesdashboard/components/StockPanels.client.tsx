@@ -1,8 +1,6 @@
 "use client";
 
 import React from "react";
-
-// If "@" alias isn't configured in tsconfig.json, switch these to relative paths
 import { useInventory } from "@/lib/inventory-store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,8 +16,6 @@ import {
 import { ChevronDown, Plus, Trash2 } from "lucide-react";
 import * as XLSX from "xlsx";
 
-/* ------------------------------------------------------------------ */
-/* Typed, reusable dropdown                                            */
 /* ------------------------------------------------------------------ */
 type GenericDropdownProps = {
   label: string;
@@ -40,8 +36,10 @@ function GenericDropdown({
 }: GenericDropdownProps) {
   const [newName, setNewName] = React.useState("");
   const [search, setSearch] = React.useState("");
-  const filteredOptions = options.filter((o) =>
-    o.toLowerCase().includes(search.toLowerCase())
+
+  const filteredOptions = React.useMemo(
+    () => options.filter((o) => o.toLowerCase().includes(search.toLowerCase())),
+    [options, search]
   );
 
   return (
@@ -52,19 +50,20 @@ function GenericDropdown({
           <span className="font-medium text-neutral-100">{selected ?? "Select"}</span>
           <ChevronDown size={14} className="text-neutral-500" />
         </DropdownMenuTrigger>
+
         <DropdownMenuContent className="min-w-56 bg-[#121317] border-neutral-800 text-neutral-100">
-          {search && (
-            <div className="px-2 pt-2 pb-1">
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search..."
-                className="bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500 placeholder:opacity-60"
-              />
-            </div>
-          )}
+          <div className="px-2 pt-2 pb-1">
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search..."
+              className="bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500 placeholder:opacity-60"
+            />
+          </div>
+
           <DropdownMenuLabel className="text-neutral-400">Choose</DropdownMenuLabel>
           <DropdownMenuSeparator />
+
           {filteredOptions.map((o) => (
             <DropdownMenuItem
               key={o}
@@ -84,7 +83,9 @@ function GenericDropdown({
               </button>
             </DropdownMenuItem>
           ))}
+
           <DropdownMenuSeparator />
+
           <div className="px-2 py-2">
             <div className="flex items-center gap-2">
               <Input
@@ -124,10 +125,9 @@ const SupplierDropdown = (props: Omit<GenericDropdownProps, "label">) => (
   <GenericDropdown label="Supplier" {...props} />
 );
 
-/* --------------------------- Types for report --------------------------- */
 type ReportRow = {
   id: string;
-  at: number;          // ms since epoch (this will be the selected stock-in date if provided)
+  at: number;
   item: string;
   type: string;
   qty: number;
@@ -136,7 +136,6 @@ type ReportRow = {
   price?: number;
 };
 
-/* ------------------------------- Component ------------------------------ */
 export default function StockPanels() {
   const inv = useInventory();
 
@@ -149,7 +148,7 @@ export default function StockPanels() {
   const types = item ? Object.keys(inv.state.items[item] ?? {}) : [];
 
   // Stock Out
-  const [qout, setQout] = React.useState<number>(0);
+  const [qout, setQout] = React.useState<string>("");
 
   // Stock In
   const [qin, setQin] = React.useState<string>("");
@@ -165,18 +164,14 @@ export default function StockPanels() {
   const [reportFrom, setReportFrom] = React.useState<string>("");
   const [reportTo, setReportTo] = React.useState<string>("");
 
-  // Derived qty
   const qty =
     item && type && inv.state.items[item] && inv.state.items[item][type] !== undefined
       ? inv.state.items[item][type]
       : 0;
 
-  /* ------------------------------ Actions -------------------------------- */
-
   const handleStockIn = () => {
     if (!item || !type || !qin || Number(qin) <= 0) return;
 
-    // Convert the selected yyyy-mm-dd to a timestamp (midnight local time)
     const atMs =
       stockInDate && !Number.isNaN(Date.parse(stockInDate))
         ? new Date(`${stockInDate}T00:00:00`).getTime()
@@ -189,25 +184,24 @@ export default function StockPanels() {
       stockInSource || undefined,
       stockInPrice !== "" ? Number(stockInPrice) : undefined,
       invoiceNo.trim() || undefined,
-      atMs // ✅ persist the chosen date (even if it's not today)
+      atMs
     );
 
-    // Reset inputs
     setQin("");
     setInvoiceNo("");
     setStockInPrice("");
   };
 
   const handleStockOut = () => {
-    if (item && type && qout > 0) {
-      inv.stockOut(item, type, qout);
-      setQout(0);
+    if (item && type && qout && Number(qout) > 0) {
+      inv.stockOut(item, type, Number(qout));
+      setQout("");
     }
   };
 
   const buildReport = React.useCallback((): ReportRow[] => {
     const fromTs = reportFrom ? new Date(reportFrom).getTime() : -Infinity;
-    const toTs   = reportTo   ? new Date(reportTo).getTime() + 24 * 60 * 60 * 1000 : Infinity;
+    const toTs = reportTo ? new Date(reportTo).getTime() + 24 * 60 * 60 * 1000 : Infinity;
 
     return inv.state.events
       .filter((e) => e.kind === "in")
@@ -215,7 +209,7 @@ export default function StockPanels() {
       .filter((e) => (reportSource !== "All" ? e.source === reportSource : true))
       .map<ReportRow>((e) => ({
         id: e.id,
-        at: e.at,           // this is the selected date if provided during stock-in
+        at: e.at,
         item: e.item,
         type: e.type,
         qty: e.qty,
@@ -229,8 +223,8 @@ export default function StockPanels() {
 
   const handleDownloadExcel = () => {
     const rows = reportResults.map((r) => ({
-      "Selected Date": new Date(r.at).toLocaleDateString(), // NEW column (date-only)
-      "DATE (stock in)": new Date(r.at).toLocaleString(),   // existing detailed timestamp
+      "Selected Date": new Date(r.at).toLocaleDateString(),
+      "DATE (stock in)": new Date(r.at).toLocaleString(),
       "Invoice No.": r.invoice ?? "",
       Item: r.item,
       Type: r.type,
@@ -245,14 +239,14 @@ export default function StockPanels() {
     XLSX.writeFile(wb, "supplier_report.xlsx");
   };
 
-  /* --------------------------------- UI ---------------------------------- */
-
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
       {/* STOCK IN */}
       <Card className="bg-neutral-900/60 border-neutral-800 md:col-span-2">
         <CardHeader>
-          <CardTitle className="text-xs tracking-wider text-neutral-400">STOCK IN</CardTitle>
+          <CardTitle className="text-xs tracking-wider text-neutral-400">
+            STOCK IN
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <ItemDropdown
@@ -323,7 +317,9 @@ export default function StockPanels() {
       {/* STOCK OUT */}
       <Card className="bg-neutral-900/60 border-neutral-800">
         <CardHeader>
-          <CardTitle className="text-xs tracking-wider text-neutral-400">STOCK OUT</CardTitle>
+          <CardTitle className="text-xs tracking-wider text-neutral-400">
+            STOCK OUT
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <ItemDropdown
@@ -348,9 +344,9 @@ export default function StockPanels() {
             <Input
               type="number"
               value={qout}
-              onChange={(e) => setQout(Number(e.target.value))}
-              placeholder="Quantity to remove"
-              className="flex-1 bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500"
+              onChange={(e) => setQout(e.target.value)}
+              placeholder="Enter the quantity..."
+              className="flex-1 bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500 placeholder:opacity-60"
             />
             <Button className="bg-orange-500 hover:bg-orange-400" onClick={handleStockOut}>
               Remove
@@ -365,7 +361,9 @@ export default function StockPanels() {
       {/* TOTAL STOCK */}
       <Card className="bg-neutral-900/60 border-neutral-800">
         <CardHeader>
-          <CardTitle className="text-xs tracking-wider text-neutral-400">TOTAL STOCK</CardTitle>
+          <CardTitle className="text-xs tracking-wider text-neutral-400">
+            TOTAL STOCK
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <ItemDropdown
@@ -433,43 +431,55 @@ export default function StockPanels() {
           </div>
         </div>
 
-        {reportResults.length > 0 ? (
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-neutral-400">
-                  <th className="px-2 py-1 text-left">Selected Date</th> {/* NEW column */}
-                  <th className="px-2 py-1 text-left">DATE (stock in)</th>
-                  <th className="px-2 py-1 text-left">Invoice No.</th>
-                  <th className="px-2 py-1 text-left">Item</th>
-                  <th className="px-2 py-1 text-left">Type</th>
-                  <th className="px-2 py-1 text-left">Quantity</th>
-                  <th className="px-2 py-1 text-left">Supplier</th>
-                  <th className="px-2 py-1 text-left">Price</th>
-                </tr>
-              </thead>
-              <tbody>
-                {reportResults.map((r) => (
-                  <tr key={r.id} className="border-b border-neutral-800">
-                    <td className="px-2 py-1">{new Date(r.at).toLocaleDateString()}</td>
-                    <td className="px-2 py-1">{new Date(r.at).toLocaleString()}</td>
-                    <td className="px-2 py-1">{r.invoice ?? "-"}</td>
-                    <td className="px-2 py-1">{r.item}</td>
-                    <td className="px-2 py-1">{r.type}</td>
-                    <td className="px-2 py-1">{r.qty}</td>
-                    <td className="px-2 py-1">{r.source ?? "-"}</td>
-                    <td className="px-2 py-1">{typeof r.price === "number" ? r.price.toFixed(2) : "-"}</td>
+        {/* results table */}
+        {/* (unchanged) */}
+        {(() => {
+          const results = reportResults;
+          return results.length > 0 ? (
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-neutral-400">
+                    <th className="px-2 py-1 text-left">Selected Date</th>
+                    <th className="px-2 py-1 text-left">DATE (stock in)</th>
+                    <th className="px-2 py-1 text-left">Invoice No.</th>
+                    <th className="px-2 py-1 text-left">Item</th>
+                    <th className="px-2 py-1 text-left">Type</th>
+                    <th className="px-2 py-1 text-left">Quantity</th>
+                    <th className="px-2 py-1 text-left">Supplier</th>
+                    <th className="px-2 py-1 text-left">Price</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="text-sm text-neutral-400">No results for the selected filters.</div>
-        )}
+                </thead>
+                <tbody>
+                  {results.map((r) => (
+                    <tr key={r.id} className="border-b border-neutral-800">
+                      <td className="px-2 py-1">{new Date(r.at).toLocaleDateString()}</td>
+                      <td className="px-2 py-1">{new Date(r.at).toLocaleString()}</td>
+                      <td className="px-2 py-1">{r.invoice ?? "-"}</td>
+                      <td className="px-2 py-1">{r.item}</td>
+                      <td className="px-2 py-1">{r.type}</td>
+                      <td className="px-2 py-1">{r.qty}</td>
+                      <td className="px-2 py-1">{r.source ?? "-"}</td>
+                      <td className="px-2 py-1">
+                        {typeof r.price === "number" ? r.price.toFixed(2) : "-"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-sm text-neutral-400">No results for the selected filters.</div>
+          );
+        })()}
 
         <div className="flex gap-4 mt-4">
-          <Button className="bg-blue-600 hover:bg-blue-500" onClick={() => { /* re-render only */ }}>
+          <Button
+            className="bg-blue-600 hover:bg-blue-500"
+            onClick={() => {
+              /* re-render only */
+            }}
+          >
             Generate Report
           </Button>
           <Button className="bg-green-600 hover:bg-green-500" onClick={handleDownloadExcel}>

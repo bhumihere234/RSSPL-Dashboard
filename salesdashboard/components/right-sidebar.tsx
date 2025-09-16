@@ -1,7 +1,13 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { ArrowDownRight, ArrowUpRight, CheckSquare, Square } from "lucide-react";
+import {
+  ArrowDownRight,
+  ArrowUpRight,
+  CheckSquare,
+  Square,
+  X as CloseIcon,
+} from "lucide-react";
 import { useInventory } from "@/lib/inventory-store";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -25,7 +31,13 @@ function formatTime(d: Date) {
 
 export function RightSidebar() {
   const now = useClock();
-  const { state, clearNotifications } = useInventory();
+  const {
+    state,
+    clearAllNotifications,
+    clearNotification,
+    resolveMessage,
+  } = useInventory();
+
   const [locationText, setLocationText] = useState<string>("");
 
   useEffect(() => {
@@ -51,6 +63,14 @@ export function RightSidebar() {
     };
   }, []);
 
+  // show only today's notifications
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 1);
+
+  const todaysNotifications = state.notifications.filter((n) => n.at >= start.getTime() && n.at < end.getTime());
+
   return (
     <aside className="w-full md:w-80 bg-[#0e0f12] border-l border-neutral-800 text-neutral-200 flex flex-col">
       <div className="p-4 border-b border-neutral-800">
@@ -68,11 +88,13 @@ export function RightSidebar() {
       </div>
 
       <div className="px-4 py-3 flex items-center justify-between border-b border-neutral-800">
-        <div className="text-[11px] uppercase tracking-widest text-blue-400">Notifications</div>
+        <div className="text-[11px] uppercase tracking-widest text-blue-400">
+          Notifications
+        </div>
         <Button
           variant="secondary"
           size="sm"
-          onClick={clearNotifications}
+          onClick={clearAllNotifications}
           className="bg-neutral-900 text-neutral-300 hover:bg-neutral-800"
         >
           Clear All
@@ -81,7 +103,7 @@ export function RightSidebar() {
 
       <ScrollArea className="flex-1">
         <ul className="p-3 space-y-2">
-          {state.notifications.map((n) => (
+          {todaysNotifications.map((n) => (
             <li
               key={n.id}
               className="bg-neutral-900/60 border border-neutral-800 rounded-md p-3 flex items-center gap-3"
@@ -93,22 +115,41 @@ export function RightSidebar() {
               )}
               <div className="flex-1">
                 <div className="text-sm text-neutral-100">{n.text}</div>
-                <div className="text-[11px] text-neutral-500">{new Date(n.at).toLocaleString()}</div>
+                <div className="text-[11px] text-neutral-500">
+                  {new Date(n.at).toLocaleString()}
+                </div>
               </div>
+              <button
+                aria-label="Clear notification"
+                onClick={() => clearNotification(n.id)}
+                className="p-1 rounded hover:bg-neutral-800 text-neutral-400"
+                title="Clear"
+              >
+                <CloseIcon size={16} />
+              </button>
             </li>
           ))}
-          {state.notifications.length === 0 && (
+          {todaysNotifications.length === 0 && (
             <li className="text-xs text-neutral-500 px-1">No notifications</li>
           )}
         </ul>
       </ScrollArea>
 
       <div className="px-4 py-3 border-t border-neutral-800">
-        <div className="text-[11px] uppercase tracking-widest text-blue-400 mb-2">Messages</div>
+        <div className="text-[11px] uppercase tracking-widest text-blue-400 mb-2">
+          Messages
+        </div>
         <ScrollArea className="max-h-48">
           <ul className="space-y-2">
             {state.messages.map((m) => (
-              <MessageRow key={m.id} id={m.id} text={m.text} checkedInit={m.checked} at={m.at} />
+              <MessageRow
+                key={m.id}
+                id={m.id}
+                text={m.text}
+                checkedInit={m.checked}
+                at={m.at}
+                onResolve={resolveMessage}
+              />
             ))}
             {state.messages.length === 0 && (
               <li className="text-xs text-neutral-500">No messages</li>
@@ -125,27 +166,19 @@ function MessageRow({
   text,
   checkedInit,
   at,
+  onResolve,
 }: {
   id: string;
   text: string;
   checkedInit?: boolean;
   at: number;
+  onResolve: (id: string) => void;
 }) {
-  // Narrow the inventory context used by the right sidebar
-  type SidebarInventory = {
-    state: {
-      messages: Array<{ id: string; text: string; checked?: boolean; at: number }>;
-    };
-    resolveMessage: (id: string) => void;
-  };
-
-  const { state, resolveMessage } = useInventory() as unknown as SidebarInventory;
-
   const [checked, setChecked] = useState<boolean>(!!checkedInit);
 
   useEffect(() => {
     setChecked(!!checkedInit);
-  }, [checkedInit, state.messages.length]);
+  }, [checkedInit]);
 
   return (
     <li className="bg-neutral-900/60 border border-neutral-800 rounded-md p-3 flex items-start gap-3">
@@ -154,7 +187,7 @@ function MessageRow({
         onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
           e.preventDefault();
           setChecked(true);
-          resolveMessage(id);
+          onResolve(id);
         }}
         className="mt-0.5"
       >
@@ -166,7 +199,9 @@ function MessageRow({
       </button>
       <div className="flex-1">
         <div className="text-sm text-neutral-200">{text}</div>
-        <div className="text-[11px] text-neutral-500 mt-1">{new Date(at).toLocaleString()}</div>
+        <div className="text-[11px] text-neutral-500 mt-1">
+          {new Date(at).toLocaleString()}
+        </div>
       </div>
     </li>
   );
