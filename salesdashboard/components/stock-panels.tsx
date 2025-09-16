@@ -127,6 +127,17 @@ const SupplierDropdown = (props: Omit<GenericDropdownProps, "label">) => (
   <GenericDropdown label="Supplier" {...props} />
 );
 
+type ReportRow = {
+  id: string;
+  at: number;
+  item: string;
+  type: string;
+  qty: number;
+  source?: string;
+  invoice?: string;
+  price?: number;
+};
+
 export default function StockPanels() {
   const inv = useInventory();
 
