@@ -182,7 +182,6 @@ const rows: InventoryEvent[] = snap.docs.map((d) => {
   };
 });
 
-
       setEvents(rows);
 
       // derive sources
