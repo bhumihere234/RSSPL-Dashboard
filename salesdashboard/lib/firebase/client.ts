@@ -1,14 +1,17 @@
-// lib/firebase/client.ts
+// salesdashboard/lib/firebase/client.ts
+"use client";
+
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getAuth, browserLocalPersistence, setPersistence } from "firebase/auth";
+import { getAuth, browserLocalPersistence, setPersistence, type Auth } from "firebase/auth";
 import {
   initializeFirestore,
   persistentLocalCache,
   persistentMultipleTabManager,
+  type Firestore,
 } from "firebase/firestore";
-import { getAnalytics, isSupported } from "firebase/analytics";
+import { getAnalytics, isSupported as analyticsSupported, type Analytics } from "firebase/analytics";
 
-// Read config from env (you added these in .env.local)
+// Read config from env (set in Vercel Settings → Environment Variables)
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN!,
@@ -19,24 +22,28 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID, // optional
 };
 
-// Ensure we only init once (avoids HMR/SSR issues)
+// Single app instance
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
-// Persist login across tabs and restarts (best for multi-device)
-const auth = getAuth(app);
-setPersistence(auth, browserLocalPersistence);
+// Create client-only singletons (undefined on server)
+let auth: Auth | undefined;
+let db: Firestore | undefined;
+let analytics: Analytics | undefined;
 
-// Firestore with offline cache + multi-tab sync
-const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager(),
-  }),
-});
-
-// Analytics only in browser (prevents SSR errors)
-let analytics: ReturnType<typeof getAnalytics> | undefined;
 if (typeof window !== "undefined") {
-  isSupported().then((ok) => {
+  auth = getAuth(app);
+  // Persist login across tabs and restarts
+  setPersistence(auth, browserLocalPersistence);
+
+  // Firestore with offline cache + multi-tab sync
+  db = initializeFirestore(app, {
+    localCache: persistentLocalCache({
+      tabManager: persistentMultipleTabManager(),
+    }),
+  });
+
+  // Analytics only if supported in browser
+  analyticsSupported().then((ok) => {
     if (ok) analytics = getAnalytics(app);
   });
 }

@@ -30,7 +30,7 @@ export type InventoryEvent = {
   qty: number;
   kind: EventKind;
   at: number; // ms epoch (chosen date or created time)
-  source?: string; // supplier
+  source?: string;
   price?: number;
   invoice?: string;
 };
@@ -39,22 +39,27 @@ export type Notification = {
   id: string;
   text: string;
   kind: EventKind;
-  at: number; // ms epoch
+  at: number;
 };
 
 export type Message = {
-  id: string; // "out-<item>-<type>"
-  text: string; // "Out of stock: ..."
-  checked: boolean; // user acknowledged
-  at: number; // first time it hit zero
+  id: string;
+  text: string;
+  checked: boolean;
+  at: number;
 };
 
 export type InventoryState = {
-  items: Record<string, Record<string, number>>; // item -> type -> qty
+  items: Record<string, Record<string, number>>; // current stock levels
   events: InventoryEvent[];
   notifications: Notification[];
   messages: Message[];
   sources: string[];
+
+  /** union of explicit + derived (from events) */
+  catalogItems: string[];
+  /** per-item union of explicit + derived types */
+  catalogTypesByItem: Record<string, string[]>;
 };
 
 type Ctx = {
@@ -85,221 +90,197 @@ type Ctx = {
   clearAllNotifications: () => void;
 
   // messages
-  resolveMessage: (id: string) => void; // remove & remember dismissal for today
+  resolveMessage: (id: string) => void;
 };
 
 const InventoryContext = createContext<Ctx | null>(null);
+
+/* --------------------------- Config --------------------------- */
+
+// Use your EXISTING collection so current data appears
+const COLLECTION = "inventory_events";
 
 /* --------------------------- Provider --------------------------- */
 
 export function InventoryProvider({ children }: { children: React.ReactNode }) {
   const [events, setEvents] = useState<InventoryEvent[]>([]);
   const [sources, setSources] = useState<string[]>([]);
+
+  // explicit, user-maintained catalogs
   const [explicitItems, setExplicitItems] = useState<string[]>([]);
-  const [explicitTypesByItem, setExplicitTypesByItem] = useState<
-    Record<string, string[]>
-  >({});
+  const [explicitTypesByItem, setExplicitTypesByItem] = useState<Record<string, string[]>>({});
 
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
 
-  // Track “dismissed today” out-of-stock pairs so they don’t pop back up
-  const [dismissedOutToday, setDismissedOutToday] = useState<Set<string>>(
-  () => new Set()
-);
+  const [dismissedOutToday, setDismissedOutToday] = useState<Set<string>>(() => new Set());
   const dayKeyRef = useRef<string>("");
 
-useEffect(() => {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  dayKeyRef.current = d.toISOString().slice(0, 10);
-}, []);
-
-// Reset the dismissed set when the day changes
-useEffect(() => {
-  const timer = setInterval(() => {
+  // Track “today” for dismissing messages
+  useEffect(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
-    const k = d.toISOString().slice(0, 10);
-    if (k !== dayKeyRef.current) {
-      dayKeyRef.current = k;
-      setDismissedOutToday(new Set());
-    }
-  }, 60_000); // check every minute
-  return () => clearInterval(timer);
-}, []);
-  // Live subscription to Firestore events
+    dayKeyRef.current = d.toISOString().slice(0, 10);
+  }, []);
   useEffect(() => {
-    const q = query(
-      collection(db, "inventory_events"),
-      orderBy("createdAt", "asc")
-    );
+    const timer = setInterval(() => {
+      const d = new Date();
+      d.setHours(0, 0, 0, 0);
+      const k = d.toISOString().slice(0, 10);
+      if (k !== dayKeyRef.current) {
+        dayKeyRef.current = k;
+        setDismissedOutToday(new Set());
+      }
+    }, 60_000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // 🔥 Live Firestore subscription (guard until db is ready)
+  useEffect(() => {
+    if (!db) return; // wait for client hydration
+
+    const q = query(collection(db, COLLECTION), orderBy("createdAt", "asc"));
     const unsub = onSnapshot(q, (snap) => {
       type InventoryEventDoc = {
-  item?: unknown;
-  type?: unknown;
-  qty?: unknown;
-  kind?: unknown;
-  at?: unknown;
-  source?: unknown;
-  price?: unknown;
-  invoice?: unknown;
-  createdAt?: unknown;
-};
+        item?: unknown;
+        type?: unknown;
+        qty?: unknown;
+        kind?: unknown;
+        at?: unknown;
+        source?: unknown;
+        price?: unknown;
+        invoice?: unknown;
+        createdAt?: unknown;
+      };
 
-const rows: InventoryEvent[] = snap.docs.map((d) => {
-  const data = d.data() as InventoryEventDoc;
+      const rows: InventoryEvent[] = snap.docs.map((d) => {
+        const data = d.data() as InventoryEventDoc;
+        const createdAt = data.createdAt instanceof Timestamp ? data.createdAt : undefined;
 
-  const createdAt =
-    data.createdAt instanceof Timestamp ? data.createdAt : undefined;
+        const atField =
+          typeof data.at === "number"
+            ? (data.at as number)
+            : createdAt
+            ? createdAt.toMillis()
+            : Date.now();
 
-  const atField =
-    typeof data.at === "number"
-      ? (data.at as number)
-      : createdAt
-      ? createdAt.toMillis()
-      : Date.now();
+        const kindVal: EventKind = data.kind === "out" ? "out" : "in";
 
-  const kindVal: EventKind =
-    data.kind === "in" ? "in" : data.kind === "out" ? "out" : "in";
-
-  return {
-    id: d.id,
-    item: String(data.item ?? ""),
-    type: String(data.type ?? ""),
-    qty: Number(data.qty ?? 0) || 0,
-    kind: kindVal,
-    at: atField,
-    source:
-      typeof data.source === "string" && data.source.trim() !== ""
-        ? data.source
-        : undefined,
-    price: typeof data.price === "number" ? data.price : undefined,
-    invoice:
-      typeof data.invoice === "string" && data.invoice.trim() !== ""
-        ? data.invoice
-        : undefined,
-  };
-});
+        return {
+          id: d.id,
+          item: String(data.item ?? ""),
+          type: String(data.type ?? ""),
+          qty: Number(data.qty ?? 0) || 0,
+          kind: kindVal,
+          at: atField,
+          source: typeof data.source === "string" && data.source.trim() !== "" ? data.source : undefined,
+          price: typeof data.price === "number" ? data.price : undefined,
+          invoice: typeof data.invoice === "string" && data.invoice.trim() !== "" ? data.invoice : undefined,
+        };
+      });
 
       setEvents(rows);
 
       // derive sources
       const srcSet = new Set<string>();
       rows.forEach((r) => r.source && srcSet.add(r.source));
-      setSources((prev) => {
-        const merged = new Set(prev);
-        srcSet.forEach((s) => merged.add(s));
-        return Array.from(merged).sort((a, b) => a.localeCompare(b));
-      });
+      setSources(Array.from(srcSet).sort((a, b) => a.localeCompare(b)));
     });
-    return () => unsub();
-  }, []);
 
-  // Build item -> type -> qty from events + explicit lists
+    return () => unsub();
+  }, [db]);
+
+  // Build item -> type -> qty from events
   const items = useMemo(() => {
     const map: Record<string, Record<string, number>> = {};
-
+    // include explicit skeleton so empty items/types can be selected
     explicitItems.forEach((it) => {
       map[it] = map[it] || {};
       (explicitTypesByItem[it] || []).forEach((tt) => {
         map[it][tt] = map[it][tt] ?? 0;
       });
     });
-
     events.forEach((e) => {
       map[e.item] = map[e.item] || {};
       map[e.item][e.type] = map[e.item][e.type] || 0;
       map[e.item][e.type] += e.kind === "in" ? e.qty : -e.qty;
       if (map[e.item][e.type] < 0) map[e.item][e.type] = 0;
     });
-
     return map;
   }, [events, explicitItems, explicitTypesByItem]);
 
-  /* --------------- Out-of-stock messages with “dismiss today” --------------- */
+  // Union catalogs exposed to UI (this is the key fix)
+  const catalogItems = useMemo(() => {
+    const s = new Set<string>(explicitItems);
+    Object.keys(items).forEach((k) => s.add(k));
+    return Array.from(s).sort((a, b) => a.localeCompare(b));
+  }, [explicitItems, items]);
 
-  useEffect(() => {
-    // Which pairs are zero now?
-    const zeroNow = new Set<string>();
+  const catalogTypesByItem = useMemo(() => {
+    const out: Record<string, string[]> = {};
+    // start with explicit
+    Object.entries(explicitTypesByItem).forEach(([it, list]) => {
+      out[it] = Array.from(new Set(list)).sort((a, b) => a.localeCompare(b));
+    });
+    // merge derived
     Object.entries(items).forEach(([it, byType]) => {
-      Object.entries(byType).forEach(([tp, q]) => {
-        if (q === 0) zeroNow.add(`${it}|||${tp}`);
-      });
+      const s = new Set<string>(out[it] ?? []);
+      Object.keys(byType).forEach((t) => s.add(t));
+      out[it] = Array.from(s).sort((a, b) => a.localeCompare(b));
     });
-
-    // Add missing out-of-stock messages (unless dismissed today)
-    setMessages((prev) => {
-      const next = [...prev];
-
-      zeroNow.forEach((key) => {
-        const [it, tp] = key.split("|||");
-        const msgId = `out-${it}-${tp}`;
-        if (dismissedOutToday.has(msgId)) return; // user dismissed today
-        if (!next.some((m) => m.id === msgId)) {
-          next.push({
-            id: msgId,
-            text: `Out of stock: ${it} / ${tp}`,
-            checked: false,
-            at: Date.now(),
-          });
-        }
-      });
-
-      // Remove out-of-stock messages for pairs that are no longer zero (refilled)
-      const stillZeroIds = new Set<string>(
-        Array.from(zeroNow).map((key) => {
-          const [it, tp] = key.split("|||");
-          return `out-${it}-${tp}`;
-        })
-      );
-      return next.filter(
-        (m) => !m.id.startsWith("out-") || stillZeroIds.has(m.id)
-      );
-    });
-  }, [items, dismissedOutToday]);
+    return out;
+  }, [explicitTypesByItem, items]);
 
   /* --------------------------- Mutations --------------------------- */
 
   const addItem = (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
     setExplicitItems((prev) =>
-      prev.includes(name) ? prev : [...prev, name].sort((a, b) => a.localeCompare(b))
+      prev.includes(trimmed) ? prev : [...prev, trimmed].sort((a, b) => a.localeCompare(b))
     );
   };
-
   const removeItem = (name: string) => {
-    setExplicitItems((prev) => prev.filter((x) => x !== name));
+    const n = name.trim();
+    if (!n) return;
+    // Only removes from explicit catalog. If the item exists due to events, it will still appear (by design).
+    setExplicitItems((prev) => prev.filter((x) => x !== n));
     setExplicitTypesByItem((prev) => {
       const next = { ...prev };
-      delete next[name];
+      delete next[n];
       return next;
     });
   };
-
   const addType = (item: string, type: string) => {
+    const it = item.trim();
+    const tp = type.trim();
+    if (!it || !tp) return;
     setExplicitTypesByItem((prev) => {
-      const cur = prev[item] || [];
-      if (cur.includes(type)) return prev;
-      return { ...prev, [item]: [...cur, type].sort((a, b) => a.localeCompare(b)) };
+      const cur = prev[it] || [];
+      if (cur.includes(tp)) return prev;
+      return { ...prev, [it]: [...cur, tp].sort((a, b) => a.localeCompare(b)) };
     });
   };
-
   const removeType = (item: string, type: string) => {
+    const it = item.trim();
+    const tp = type.trim();
+    if (!it || !tp) return;
     setExplicitTypesByItem((prev) => {
-      const cur = prev[item] || [];
-      return { ...prev, [item]: cur.filter((t) => t !== type) };
+      const cur = prev[it] || [];
+      return { ...prev, [it]: cur.filter((t) => t !== tp) };
     });
   };
-
   const addSource = (name: string) => {
-    setSources((prev) => (prev.includes(name) ? prev : [...prev, name]));
+    const n = name.trim();
+    if (!n) return;
+    setSources((prev) => (prev.includes(n) ? prev : [...prev, n]));
   };
-
   const removeSource = (name: string) => {
-    setSources((prev) => prev.filter((s) => s !== name));
+    const n = name.trim();
+    if (!n) return;
+    setSources((prev) => prev.filter((s) => s !== n));
   };
 
-  // Helper: push a local notification (UI filters to today)
   const pushNotification = (text: string, kind: EventKind) => {
     setNotifications((prev) => [
       ...prev,
@@ -307,58 +288,42 @@ const rows: InventoryEvent[] = snap.docs.map((d) => {
     ]);
   };
 
-  const stockIn: Ctx["stockIn"] = async (
-    item,
-    type,
-    qty,
-    source,
-    price,
-    invoice,
-    atMs
-  ) => {
-    const body = {
+  const stockIn: Ctx["stockIn"] = async (item, type, qty, source, price, invoice, atMs) => {
+    if (!db) return; // safety
+    await addDoc(collection(db, COLLECTION), {
       item,
       type,
       qty,
-      kind: "in" as const,
+      kind: "in",
       at: typeof atMs === "number" ? atMs : Date.now(),
       source: source ?? null,
       price: typeof price === "number" ? price : null,
       invoice: invoice ?? null,
       createdAt: serverTimestamp(),
-    };
-    await addDoc(collection(db, "inventory_events"), body);
+    });
     if (source) addSource(source);
     pushNotification(`Stock IN • ${qty} of ${item} / ${type}`, "in");
   };
 
   const stockOut: Ctx["stockOut"] = async (item, type, qty) => {
-    const body = {
+    if (!db) return; // safety
+    await addDoc(collection(db, COLLECTION), {
       item,
       type,
       qty,
-      kind: "out" as const,
+      kind: "out",
       at: Date.now(),
       createdAt: serverTimestamp(),
-    };
-    await addDoc(collection(db, "inventory_events"), body);
+    });
     pushNotification(`Stock OUT • ${qty} of ${item} / ${type}`, "out");
   };
 
-  // Notifications: clear single / all
   const clearNotification: Ctx["clearNotification"] = (id) =>
     setNotifications((prev) => prev.filter((n) => n.id !== id));
-  const clearAllNotifications: Ctx["clearAllNotifications"] = () =>
-    setNotifications([]);
-
-  // Messages: user checks to hide it for the day (until refilled then goes 0 again)
+  const clearAllNotifications: Ctx["clearAllNotifications"] = () => setNotifications([]);
   const resolveMessage: Ctx["resolveMessage"] = (id) => {
     setMessages((prev) => prev.filter((m) => m.id !== id));
-    setDismissedOutToday((prev) => {
-      const next = new Set(prev);
-      next.add(id);
-      return next;
-    });
+    setDismissedOutToday((prev) => new Set(prev).add(id));
   };
 
   const state: InventoryState = {
@@ -367,6 +332,8 @@ const rows: InventoryEvent[] = snap.docs.map((d) => {
     notifications,
     messages,
     sources,
+    catalogItems,
+    catalogTypesByItem,
   };
 
   const value: Ctx = {
@@ -384,11 +351,7 @@ const rows: InventoryEvent[] = snap.docs.map((d) => {
     resolveMessage,
   };
 
-  return (
-    <InventoryContext.Provider value={value}>
-      {children}
-    </InventoryContext.Provider>
-  );
+  return <InventoryContext.Provider value={value}>{children}</InventoryContext.Provider>;
 }
 
 /* --------------------------- Hook --------------------------- */
