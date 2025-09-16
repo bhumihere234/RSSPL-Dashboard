@@ -1,6 +1,18 @@
 "use client";
 
 import React from "react";
+import { db } from "./firebase";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  updateDoc,
+  addDoc,
+  deleteDoc,
+  onSnapshot,
+} from "firebase/firestore";
 
 export type EventKind = "in" | "out";
 
@@ -102,23 +114,22 @@ const defaultState: InventoryState = {
   sources: ["Warehouse", "Supplier"],
 };
 
-const KEY = "inv-dashboard-state-v1";
+const INVENTORY_DOC = "inventory-state";
+const inventoryRef = doc(db, "inventory", INVENTORY_DOC);
 
-function loadState(): InventoryState {
+async function loadStateFirestore(): Promise<InventoryState> {
   try {
-    if (typeof window === "undefined") return defaultState;
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return defaultState;
-    return JSON.parse(raw) as InventoryState;
+    const snap = await getDoc(inventoryRef);
+    if (!snap.exists()) return defaultState;
+    return snap.data() as InventoryState;
   } catch {
     return defaultState;
   }
 }
 
-function saveState(state: InventoryState) {
+async function saveStateFirestore(state: InventoryState) {
   try {
-    if (typeof window === "undefined") return;
-    localStorage.setItem(KEY, JSON.stringify(state));
+    await setDoc(inventoryRef, state);
   } catch {
     // ignore
   }
@@ -128,6 +139,21 @@ export const InventoryContext = React.createContext<Ctx | null>(null);
 
 export function InventoryProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = React.useState<InventoryState>(defaultState);
+
+  // Listen for Firestore changes (real-time sync)
+  React.useEffect(() => {
+    const unsub = onSnapshot(inventoryRef, (snap) => {
+      if (snap.exists()) {
+        setState(snap.data() as InventoryState);
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  // Save to Firestore on state change
+  React.useEffect(() => {
+    saveStateFirestore(state);
+  }, [state]);
 
   const addSource = (name: string) => {
     if (!name) return;
@@ -140,14 +166,6 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
   const removeSource = (name: string) => {
     setState((s) => ({ ...s, sources: s.sources.filter((sname) => sname !== name) }));
   };
-
-  React.useEffect(() => {
-    setState(loadState());
-  }, []);
-
-  React.useEffect(() => {
-    saveState(state);
-  }, [state]);
 
   const addItem = (name: string) => {
     if (!name) return;
