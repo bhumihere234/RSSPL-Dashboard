@@ -10,7 +10,7 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/
 type Range = "day" | "week" | "month"
 
 export function OverviewChart() {
-  const { state } = useInventory()
+  const inventory = useInventory()
   const [range, setRange] = useState<Range>("day")
 
   const data = useMemo(() => {
@@ -49,16 +49,16 @@ export function OverviewChart() {
     const rows = buckets.map((b) => {
       let inc = 0
       let dec = 0
-      state.events.forEach((e) => {
-        if (e.at >= b.start && e.at < b.end) {
-          if (e.kind === "in") inc += e.qty
+      inventory.events.forEach((e) => {
+        if (e.timestamp >= b.start && e.timestamp < b.end) {
+          if (e.kind === "IN") inc += e.qty
           else dec += e.qty
         }
       })
       return { period: b.key, increase: inc, decrease: dec }
     })
     return rows
-  }, [state.events, range])
+  }, [inventory.events, range])
 
   return (
     <Card className="bg-neutral-900/60 border-neutral-800 overflow-hidden">

@@ -6,8 +6,9 @@ import { Analytics } from "@vercel/analytics/next";
 import { Suspense } from "react";
 import "./globals.css";
 
-// 👇 add this import
+// 👇 add these imports
 import { InventoryProvider } from "@/lib/inventory-store";
+import ClientOnly from "@/components/ClientOnly";
 
 export const metadata: Metadata = {
   title: "Sales Dashboard",
@@ -27,9 +28,11 @@ export default function RootLayout({
     >
       <body className="font-sans">
         {/* Client provider supplies Firestore-backed inventory state to the whole app */}
-        <InventoryProvider>
-          <Suspense fallback={null}>{children}</Suspense>
-        </InventoryProvider>
+        <ClientOnly fallback={<div className="h-screen bg-[#0b0c10] flex items-center justify-center text-neutral-400">Loading...</div>}>
+          <InventoryProvider>
+            <Suspense fallback={null}>{children}</Suspense>
+          </InventoryProvider>
+        </ClientOnly>
         <Analytics />
       </body>
     </html>

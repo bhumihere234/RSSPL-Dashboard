@@ -23,12 +23,12 @@ function ArrowSolidDown(props: React.SVGProps<SVGSVGElement>) {
 }
 
 export function KPIs() {
-  const { state } = useInventory()
+  const inventory = useInventory()
 
-  const { pctIn, totalOut, emptyCount } = useMemo(() => {
-    const totals = state.events.reduce(
+    const { pctIn, totalOut, emptyCount } = useMemo(() => {
+    const totals = inventory.events.reduce(
       (acc, e) => {
-        if (e.kind === "in") acc.in += e.qty
+        if (e.kind === "IN") acc.in += e.qty
         else acc.out += e.qty
         return acc
       },
@@ -37,15 +37,23 @@ export function KPIs() {
     const denom = totals.in + totals.out
     const pctIn = denom ? Math.round((totals.in / denom) * 100) : 0
 
+    // Calculate empty count from current stock
+    const stockMap: Record<string, Record<string, number>> = {}
+    inventory.events.forEach((e) => {
+      if (!stockMap[e.item]) stockMap[e.item] = {}
+      if (!stockMap[e.item][e.type]) stockMap[e.item][e.type] = 0
+      stockMap[e.item][e.type] += e.kind === "IN" ? e.qty : -e.qty
+    })
+
     let empty = 0
-    Object.values(state.items).forEach((types) => {
+    Object.values(stockMap).forEach((types) => {
       Object.values(types).forEach((q) => {
-        if (q === 0) empty += 1
+        if (q <= 0) empty += 1
       })
     })
 
     return { pctIn, totalOut: totals.out, emptyCount: empty }
-  }, [state.events, state.items])
+  }, [inventory.events])
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

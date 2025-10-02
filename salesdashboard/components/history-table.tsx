@@ -8,39 +8,48 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 type Mode = "in" | "out" | "total"
 
 export function HistoryTable({ mode }: { mode: Mode }) {
-  const { state } = useInventory()
+  const inventory = useInventory()
   const [search, setSearch] = useState("")
 
   const rows = useMemo(() => {
     if (mode === "total") {
-      const lastIn = new Map<string, number>()
-      const lastOut = new Map<string, number>()
-      state.events.forEach((e) => {
-        const key = `${e.item}__${e.type}`
-        if (e.kind === "in") lastIn.set(key, Math.max(lastIn.get(key) ?? 0, e.at))
-        else lastOut.set(key, Math.max(lastOut.get(key) ?? 0, e.at))
+      // total view = calculate current stock per item/type
+      const stockMap: Record<string, Record<string, number>> = {}
+      
+      inventory.events.forEach((e) => {
+        if (!stockMap[e.item]) stockMap[e.item] = {}
+        if (!stockMap[e.item][e.type]) stockMap[e.item][e.type] = 0
+        
+        stockMap[e.item][e.type] += e.kind === "IN" ? e.qty : -e.qty
       })
-      let list: { item: string; type: string; qty: number; lastIn?: number; lastOut?: number }[] = []
-      Object.entries(state.items).forEach(([item, types]) => {
+      
+      const list: Array<{ item: string; type: string; qty: number }> = []
+      Object.entries(stockMap).forEach(([item, types]) => {
         Object.entries(types).forEach(([type, qty]) => {
-          const key = `${item}__${type}`
-          list.push({ item, type, qty, lastIn: lastIn.get(key), lastOut: lastOut.get(key) })
+          if (qty > 0) { // Only show positive stock
+            list.push({ item, type, qty })
+          }
         })
       })
-      // Sort by item name then type
-      list = list.sort((a, b) => (a.item + a.type).localeCompare(b.item + b.type))
+      
+      let sortedList = list.sort((a, b) => (a.item + a.type).localeCompare(b.item + b.type))
       if (search.trim()) {
-        list = list.filter((r) => r.item.toLowerCase().includes(search.toLowerCase()))
+        sortedList = sortedList.filter((r) => r.item.toLowerCase().includes(search.toLowerCase()))
       }
-      return list
+      return sortedList
     } else {
-      let filtered = state.events.filter((e) => e.kind === mode).sort((a, b) => b.at - a.at)
+      // in/out view = filter and sort events
+      const kindFilter = mode === "in" ? "IN" : "OUT"
+      let filtered = inventory.events
+        .filter((e) => e.kind === kindFilter)
+        .sort((a, b) => b.timestamp - a.timestamp)
+      
       if (search.trim()) {
         filtered = filtered.filter((e) => e.item.toLowerCase().includes(search.toLowerCase()))
       }
       return filtered
     }
-  }, [state.items, state.events, mode, search])
+  }, [inventory.events, mode, search])
 
   return (
     <div className="bg-neutral-900/60 border border-neutral-800 rounded-md">
@@ -60,43 +69,50 @@ export function HistoryTable({ mode }: { mode: Mode }) {
               <>
                 <TableHead className="text-neutral-400">Item</TableHead>
                 <TableHead className="text-neutral-400">Type</TableHead>
-                <TableHead className="text-neutral-400">Qty Available</TableHead>
-                <TableHead className="text-neutral-400">Last In</TableHead>
-                <TableHead className="text-neutral-400">Last Out</TableHead>
+                <TableHead className="text-neutral-400">Current Stock</TableHead>
               </>
             ) : (
               <>
-                <TableHead className="text-neutral-400">Date</TableHead>
                 <TableHead className="text-neutral-400">Item</TableHead>
                 <TableHead className="text-neutral-400">Type</TableHead>
                 <TableHead className="text-neutral-400">Quantity</TableHead>
+                <TableHead className="text-neutral-400">Source</TableHead>
+                <TableHead className="text-neutral-400">Supplier</TableHead>
+                <TableHead className="text-neutral-400">Rate</TableHead>
+                <TableHead className="text-neutral-400">Date</TableHead>
               </>
             )}
           </TableRow>
         </TableHeader>
         <TableBody>
-          {mode === "total"
-            ? (rows as Array<{ item: string; type: string; qty: number; lastIn?: number; lastOut?: number }>).map((r) => (
-                <TableRow key={`${r.item}-${r.type}`} className="border-neutral-800">
-                  <TableCell className="text-neutral-100">{r.item}</TableCell>
-                  <TableCell className="text-neutral-300">{r.type}</TableCell>
-                  <TableCell className="text-neutral-100">{r.qty}</TableCell>
-                  <TableCell className="text-neutral-400">
-                    {r.lastIn ? new Date(r.lastIn).toLocaleString() : "-"}
+          {rows.map((r) => (
+            <TableRow key={mode === "total" ? `${r.item}-${r.type}` : (r as InventoryEvent).id} className="border-neutral-800">
+              <TableCell className="text-neutral-300">{r.item}</TableCell>
+              <TableCell className="text-neutral-300">{r.type}</TableCell>
+              {mode === "total" ? (
+                <TableCell className="text-green-400">{r.qty}</TableCell>
+              ) : (
+                <>
+                  <TableCell className={(r as InventoryEvent).kind === "IN" ? "text-green-400" : "text-orange-400"}>
+                    {r.qty}
                   </TableCell>
-                  <TableCell className="text-neutral-400">
-                    {r.lastOut ? new Date(r.lastOut).toLocaleString() : "-"}
+                  <TableCell className="text-neutral-300">{(r as InventoryEvent).source}</TableCell>
+                  <TableCell className="text-neutral-300">{(r as InventoryEvent).supplier}</TableCell>
+                  <TableCell className="text-neutral-300">{(r as InventoryEvent).rate}</TableCell>
+                  <TableCell className="text-neutral-300">
+                    {new Date((r as InventoryEvent).timestamp).toLocaleString()}
                   </TableCell>
-                </TableRow>
-              ))
-            : (rows as InventoryEvent[]).map((r) => (
-                <TableRow key={r.id} className="border-neutral-800">
-                  <TableCell className="text-neutral-300">{new Date(r.at).toLocaleString()}</TableCell>
-                  <TableCell className="text-neutral-100">{r.item}</TableCell>
-                  <TableCell className="text-neutral-300">{r.type}</TableCell>
-                  <TableCell className={mode === "in" ? "text-green-400" : "text-orange-400"}>{r.qty}</TableCell>
-                </TableRow>
-              ))}
+                </>
+              )}
+            </TableRow>
+          ))}
+          {rows.length === 0 && (
+            <TableRow className="border-neutral-800">
+              <TableCell colSpan={mode === "total" ? 3 : 7} className="text-center text-neutral-500 py-8">
+                No {mode === "total" ? "stock" : `${mode} events`} found
+              </TableCell>
+            </TableRow>
+          )}
         </TableBody>
       </Table>
     </div>
