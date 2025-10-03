@@ -5,6 +5,7 @@ import { useInventory } from "@/lib/inventory-store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -191,10 +192,8 @@ type ReportRow = {
 export default function StockPanels() {
   const inv = useInventory();
 
-  // Selection
-  const [item, setItem] = React.useState<string | undefined>(
-    inv.items[0]
-  );
+  // Selection - start with undefined to avoid showing deleted items
+  const [item, setItem] = React.useState<string | undefined>(undefined);
   const [type, setType] = React.useState<string>("");
 
   const types = item ? inv.getTypesForItem(item) : [];
@@ -207,15 +206,68 @@ export default function StockPanels() {
   const [stockOutPrice, setStockOutPrice] = React.useState<string>("");
   const [stockOutGST, setStockOutGST] = React.useState<string>("");
 
+  // New Stock Out Table
+  const [showStockOutTable, setShowStockOutTable] = React.useState<boolean>(false);
+  
+  type StockOutRow = {
+    item: string;
+    type: string;
+    quantity: string;
+    supplier: string;
+    invoice: string;
+    price: string;
+    gst: string;
+    currentStock: number;
+  };
+  
+  const [stockOutRows, setStockOutRows] = React.useState<StockOutRow[]>([]);
+
   // Stock In
   const [qin, setQin] = React.useState<string>("");
   const [stockInDate, setStockInDate] = React.useState<string>(""); // yyyy-mm-dd
   const [invoiceNo, setInvoiceNo] = React.useState<string>("");
-  const [stockInSource, setStockInSource] = React.useState<string>(
-    inv.sources[0] ?? ""
-  );
+  const [stockInSource, setStockInSource] = React.useState<string>("");
   const [stockInPrice, setStockInPrice] = React.useState<string>("");
   const [stockInGST, setStockInGST] = React.useState<string>("");
+
+  // Initialize item selection when items become available
+  React.useEffect(() => {
+    if (!item && inv.items.length > 0) {
+      setItem(inv.items[0]);
+    }
+    // Clear item if the selected item is no longer available
+    if (item && !inv.items.includes(item)) {
+      setItem(inv.items[0] || undefined);
+      setType(""); // Clear type as well
+    }
+  }, [inv.items, item]);
+
+  // Initialize type selection when types become available for selected item
+  React.useEffect(() => {
+    if (item) {
+      const availableTypes = inv.getTypesForItem(item);
+      if (!type && availableTypes.length > 0) {
+        setType(availableTypes[0]);
+      }
+      // Clear type if the selected type is no longer available for this item
+      if (type && !availableTypes.includes(type)) {
+        setType(availableTypes[0] || "");
+      }
+    } else {
+      setType("");
+    }
+  }, [item, inv.getTypesForItem, type]);
+
+  // Initialize source selection when sources become available
+  React.useEffect(() => {
+    if (!stockInSource && inv.sources.length > 0) {
+      setStockInSource(inv.sources[0]);
+    }
+    // Clear source if the selected source is no longer available
+    if (stockInSource && !inv.sources.includes(stockInSource)) {
+      setStockInSource(inv.sources[0] || "");
+    }
+  }, [inv.sources, stockInSource]);
 
   // Report filters
   const [reportSource, setReportSource] = React.useState<string>("All");
@@ -247,6 +299,69 @@ export default function StockPanels() {
     setInvoiceNo("");
     setStockInPrice("");
     setStockInGST("");
+  };
+
+  // Stock Out Table Functions
+  const initializeStockOutTable = () => {
+    const rows: StockOutRow[] = inv.items.map(itemName => {
+      const types = inv.getTypesForItem(itemName);
+      const firstType = types[0] || "";
+      const currentStock = firstType ? inv.events
+        .filter(e => e.item === itemName && e.type === firstType)
+        .reduce((total, e) => total + (e.kind === "IN" ? e.qty : -e.qty), 0) : 0;
+      
+      return {
+        item: itemName,
+        type: firstType,
+        quantity: "",
+        supplier: "",
+        invoice: "",
+        price: "",
+        gst: "",
+        currentStock
+      };
+    });
+    setStockOutRows(rows);
+    setShowStockOutTable(true);
+  };
+
+  const updateStockOutRow = (index: number, field: keyof StockOutRow, value: string) => {
+    setStockOutRows(prev => {
+      const newRows = [...prev];
+      newRows[index] = { ...newRows[index], [field]: value };
+      
+      // If type is changed, recalculate current stock
+      if (field === 'type') {
+        const item = newRows[index].item;
+        const type = value;
+        const currentStock = inv.events
+          .filter(e => e.item === item && e.type === type)
+          .reduce((total, e) => total + (e.kind === "IN" ? e.qty : -e.qty), 0);
+        newRows[index].currentStock = currentStock;
+      }
+      
+      return newRows;
+    });
+  };
+
+  const processStockOutTable = () => {
+    stockOutRows.forEach(row => {
+      if (row.item && row.type && row.quantity && Number(row.quantity) > 0) {
+        inv.addEvent({
+          item: row.item,
+          type: row.type,
+          qty: Number(row.quantity),
+          rate: Number(row.price) || 0,
+          source: "Bulk Stock Out",
+          supplier: row.supplier || "Unknown",
+          kind: "OUT"
+        });
+      }
+    });
+    
+    // Reset table
+    setStockOutRows([]);
+    setShowStockOutTable(false);
   };
 
   const buildReport = React.useCallback((): ReportRow[] => {
@@ -408,144 +523,141 @@ export default function StockPanels() {
       </Card>
 
       {/* STOCK OUT */}
-      {/* STOCK OUT */}
-{/* STOCK OUT */}
-{/* STOCK OUT */}
-<Card className="bg-neutral-900/60 border-neutral-800">
-  <CardHeader>
-    <CardTitle className="text-xs tracking-wider text-neutral-400">
-      STOCK OUT
-    </CardTitle>
-  </CardHeader>
-  <CardContent className="space-y-3">
-    <ItemDropdown
-      selected={item}
-      onSelect={(v) => {
-        setItem(v)
-        const first = inv.getTypesForItem(v)[0] ?? ""
-        setType(first)
-      }}
-      onAdd={(name) => inv.addItem(name)}
-      onRemove={(name) => {
-        // If the deleted item was currently selected, clear selection or select first available
-        if (item === name) {
-          const remainingItems = inv.items.filter(i => i !== name);
-          const newItem = remainingItems[0];
-          setItem(newItem);
-          const newType = newItem ? inv.getTypesForItem(newItem)[0] ?? "" : "";
-          setType(newType);
-        }
-        inv.removeItem(name);
-      }}
-      options={inv.items}
-    />
-
-    <TypeDropdown
-      selected={type}
-      onSelect={(v) => setType(v)}
-      onAdd={(name) => item && inv.addType(item, name)}
-      onRemove={(name) => {
-        // If the deleted type was currently selected, clear selection or select first available
-        if (type === name && item) {
-          const remainingTypes = inv.getTypesForItem(item).filter(t => t !== name);
-          setType(remainingTypes[0] ?? "");
-        }
-        if (item) {
-          inv.removeType(item, name);
-        }
-      }}
-      options={types}
-    />
-
-    {/* ✅ Supplier Dropdown (shared with Stock In) */}
-    <SupplierDropdown
-      selected={stockOutSupplier}
-      onSelect={(v) => setStockOutSupplier(v)}
-      onAdd={(name) => inv.addSource(name)}
-      onRemove={(name) => {
-        // If the deleted source was currently selected, clear selection or select first available
-        if (stockOutSupplier === name) {
-          const remainingSources = inv.sources.filter(s => s !== name);
-          setStockOutSupplier(remainingSources[0] ?? "");
-        }
-        inv.removeSource(name);
-      }}
-      options={inv.sources}
-    />
-
-    <div className="flex flex-col gap-2">
-      <Input
-        type="number"
-        value={qout}
-        onChange={(e) => setQout(e.target.value)}
-        placeholder="Quantity..."
-        className="bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500"
-      />
-
-      <Input
-        type="date"
-        value={stockOutDate}
-        onChange={(e) => setStockOutDate(e.target.value)}
-        className="bg-neutral-900 border-neutral-800 text-neutral-100"
-      />
-
-      <Input
-        type="text"
-        value={stockOutInvoice}
-        onChange={(e) => setStockOutInvoice(e.target.value)}
-        placeholder="Invoice No."
-        className="bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500"
-      />
-
-      <Input
-        type="number"
-        step="0.01"
-        value={stockOutPrice}
-        onChange={(e) => setStockOutPrice(e.target.value)}
-        placeholder="Price"
-        className="bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500"
-      />
-
-      <Input
-        type="number"
-        step="0.01"
-        value={stockOutGST}
-        onChange={(e) => setStockOutGST(e.target.value)}
-        placeholder="GST (%)"
-        className="bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500"
-      />
-    </div>
-
-    <Button
-      className="bg-orange-500 hover:bg-orange-400"
-      onClick={() => {
-        if (item && type && qout && Number(qout) > 0) {
-          inv.addEvent({
-            item,
-            type,
-            qty: Number(qout),
-            rate: Number(stockOutGST) || 0,
-            source: "Manual Out",
-            supplier: stockOutSupplier || "Unknown",
-            kind: "OUT"
-          })
-
-          // Clear after save
-          setQout("")
-          setStockOutInvoice("")
-          setStockOutPrice("")
-          setStockOutGST("")
-        }
-      }}
-    >
-      Remove
-    </Button>
-
-    <div className="text-xs text-neutral-400">
-      Selected available: <span className="text-neutral-100">{qty}</span>
-    </div>
-  </CardContent>
-</Card>
+      <Card className="bg-neutral-900/60 border-neutral-800">
+        <CardHeader>
+          <CardTitle className="text-xs tracking-wider text-neutral-400">
+            STOCK OUT
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {!showStockOutTable ? (
+            <Button
+              className="w-full bg-orange-500 hover:bg-orange-400"
+              onClick={initializeStockOutTable}
+            >
+              Open Stock Out Table
+            </Button>
+          ) : (
+            <div className="space-y-4">
+              <div className="max-h-96 overflow-y-auto border border-neutral-800 rounded-md">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="border-neutral-800">
+                      <TableHead className="text-neutral-400">Item</TableHead>
+                      <TableHead className="text-neutral-400">Type</TableHead>
+                      <TableHead className="text-neutral-400">Quantity</TableHead>
+                      <TableHead className="text-neutral-400">Supplier</TableHead>
+                      <TableHead className="text-neutral-400">Invoice</TableHead>
+                      <TableHead className="text-neutral-400">Price</TableHead>
+                      <TableHead className="text-neutral-400">GST (%)</TableHead>
+                      <TableHead className="text-neutral-400">Current Stock</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {stockOutRows.map((row, index) => (
+                      <TableRow key={index} className="border-neutral-800">
+                        <TableCell className="text-neutral-100 font-medium">
+                          {row.item}
+                        </TableCell>
+                        <TableCell>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger className="inline-flex items-center gap-2 bg-neutral-800 border border-neutral-700 text-neutral-200 px-2 py-1 rounded text-sm">
+                              {row.type || "Select Type"}
+                              <ChevronDown className="h-3 w-3" />
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent className="bg-neutral-900 border-neutral-800">
+                              {inv.getTypesForItem(row.item).map((type) => (
+                                <DropdownMenuLabel
+                                  key={type}
+                                  className="text-neutral-200 cursor-pointer hover:bg-neutral-800"
+                                  onClick={() => updateStockOutRow(index, 'type', type)}
+                                >
+                                  {type}
+                                </DropdownMenuLabel>
+                              ))}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            type="number"
+                            value={row.quantity}
+                            onChange={(e) => updateStockOutRow(index, 'quantity', e.target.value)}
+                            placeholder="Qty"
+                            className="bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500 w-20"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            type="text"
+                            value={row.supplier}
+                            onChange={(e) => updateStockOutRow(index, 'supplier', e.target.value)}
+                            placeholder="Supplier"
+                            className="bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500 w-24"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            type="text"
+                            value={row.invoice}
+                            onChange={(e) => updateStockOutRow(index, 'invoice', e.target.value)}
+                            placeholder="Invoice"
+                            className="bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500 w-24"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={row.price}
+                            onChange={(e) => updateStockOutRow(index, 'price', e.target.value)}
+                            placeholder="Price"
+                            className="bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500 w-20"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={row.gst}
+                            onChange={(e) => updateStockOutRow(index, 'gst', e.target.value)}
+                            placeholder="GST"
+                            className="bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500 w-20"
+                          />
+                        </TableCell>
+                        <TableCell className="text-neutral-100 font-medium">
+                          <span className={row.currentStock < Number(row.quantity || 0) ? "text-red-400" : "text-green-400"}>
+                            {row.currentStock}
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              
+              <div className="flex gap-2">
+                <Button
+                  className="bg-green-600 hover:bg-green-500"
+                  onClick={processStockOutTable}
+                >
+                  Process All Stock Out
+                </Button>
+                <Button
+                  variant="outline"
+                  className="border-neutral-600 text-neutral-300 hover:bg-neutral-800"
+                  onClick={() => {
+                    setStockOutRows([]);
+                    setShowStockOutTable(false);
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
 
       {/* REPORT */}
