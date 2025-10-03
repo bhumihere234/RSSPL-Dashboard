@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -198,14 +199,6 @@ export default function StockPanels() {
 
   const types = item ? inv.getTypesForItem(item) : [];
 
-  // Stock Out
-  const [qout, setQout] = React.useState<string>("");
-  const [stockOutSupplier, setStockOutSupplier] = React.useState<string>("");
-  const [stockOutDate, setStockOutDate] = React.useState<string>("");
-  const [stockOutInvoice, setStockOutInvoice] = React.useState<string>("");
-  const [stockOutPrice, setStockOutPrice] = React.useState<string>("");
-  const [stockOutGST, setStockOutGST] = React.useState<string>("");
-
   // New Stock Out Table
   const [showStockOutTable, setShowStockOutTable] = React.useState<boolean>(false);
   
@@ -213,10 +206,11 @@ export default function StockPanels() {
     item: string;
     type: string;
     quantity: string;
-    supplier: string;
+    customer: string;
     invoice: string;
     price: string;
     gst: string;
+    date: string;
     currentStock: number;
   };
   
@@ -274,14 +268,6 @@ export default function StockPanels() {
   const [reportFrom, setReportFrom] = React.useState<string>("");
   const [reportTo, setReportTo] = React.useState<string>("");
 
-  // Calculate current quantity from events
-  const qty = React.useMemo(() => {
-    if (!item || !type) return 0;
-    return inv.events
-      .filter(e => e.item === item && e.type === type)
-      .reduce((total, e) => total + (e.kind === "IN" ? e.qty : -e.qty), 0);
-  }, [inv.events, item, type]);
-
   const handleStockIn = () => {
     if (!item || !type || !qin || Number(qin) <= 0) return;
 
@@ -314,10 +300,11 @@ export default function StockPanels() {
         item: itemName,
         type: firstType,
         quantity: "",
-        supplier: "",
+        customer: "",
         invoice: "",
         price: "",
         gst: "",
+        date: new Date().toISOString().split('T')[0],
         currentStock
       };
     });
@@ -353,7 +340,7 @@ export default function StockPanels() {
           qty: Number(row.quantity),
           rate: Number(row.price) || 0,
           source: "Bulk Stock Out",
-          supplier: row.supplier || "Unknown",
+          supplier: row.customer || "Unknown",
           kind: "OUT"
         });
       }
@@ -414,7 +401,7 @@ export default function StockPanels() {
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
       {/* STOCK IN */}
-      <Card className="bg-neutral-900/60 border-neutral-800 md:col-span-2">
+      <Card className="bg-neutral-900/60 border-neutral-800 md:col-span-1">
         <CardHeader>
           <CardTitle className="text-xs tracking-wider text-neutral-400">
             STOCK IN
@@ -523,7 +510,7 @@ export default function StockPanels() {
       </Card>
 
       {/* STOCK OUT */}
-      <Card className="bg-neutral-900/60 border-neutral-800">
+      <Card className="bg-neutral-900/60 border-neutral-800 md:col-span-2">
         <CardHeader>
           <CardTitle className="text-xs tracking-wider text-neutral-400">
             STOCK OUT
@@ -539,18 +526,20 @@ export default function StockPanels() {
             </Button>
           ) : (
             <div className="space-y-4">
-              <div className="max-h-96 overflow-y-auto border border-neutral-800 rounded-md">
-                <Table>
+              <div className="overflow-auto border border-neutral-800 rounded-md">
+                <div className="overflow-x-auto">
+                  <Table className="min-w-full">
                   <TableHeader>
                     <TableRow className="border-neutral-800">
-                      <TableHead className="text-neutral-400">Item</TableHead>
-                      <TableHead className="text-neutral-400">Type</TableHead>
-                      <TableHead className="text-neutral-400">Quantity</TableHead>
-                      <TableHead className="text-neutral-400">Supplier</TableHead>
-                      <TableHead className="text-neutral-400">Invoice</TableHead>
-                      <TableHead className="text-neutral-400">Price</TableHead>
-                      <TableHead className="text-neutral-400">GST (%)</TableHead>
-                      <TableHead className="text-neutral-400">Current Stock</TableHead>
+                      <TableHead className="text-neutral-400 min-w-[120px]">Item</TableHead>
+                      <TableHead className="text-neutral-400 min-w-[120px]">Type</TableHead>
+                      <TableHead className="text-neutral-400 min-w-[100px]">Quantity</TableHead>
+                      <TableHead className="text-neutral-400 min-w-[120px]">Customer</TableHead>
+                      <TableHead className="text-neutral-400 min-w-[120px]">Invoice</TableHead>
+                      <TableHead className="text-neutral-400 min-w-[100px]">Price</TableHead>
+                      <TableHead className="text-neutral-400 min-w-[80px]">GST (%)</TableHead>
+                      <TableHead className="text-neutral-400 min-w-[120px]">Date</TableHead>
+                      <TableHead className="text-neutral-400 min-w-[100px]">Stock</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -567,13 +556,15 @@ export default function StockPanels() {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent className="bg-neutral-900 border-neutral-800">
                               {inv.getTypesForItem(row.item).map((type) => (
-                                <DropdownMenuLabel
+                                <DropdownMenuItem
                                   key={type}
-                                  className="text-neutral-200 cursor-pointer hover:bg-neutral-800"
-                                  onClick={() => updateStockOutRow(index, 'type', type)}
+                                  className="text-neutral-200 cursor-pointer hover:bg-neutral-800 focus:bg-neutral-800"
+                                  onClick={() => {
+                                    updateStockOutRow(index, 'type', type);
+                                  }}
                                 >
                                   {type}
-                                </DropdownMenuLabel>
+                                </DropdownMenuItem>
                               ))}
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -590,9 +581,9 @@ export default function StockPanels() {
                         <TableCell>
                           <Input
                             type="text"
-                            value={row.supplier}
-                            onChange={(e) => updateStockOutRow(index, 'supplier', e.target.value)}
-                            placeholder="Supplier"
+                            value={row.customer}
+                            onChange={(e) => updateStockOutRow(index, 'customer', e.target.value)}
+                            placeholder="Customer"
                             className="bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500 w-24"
                           />
                         </TableCell>
@@ -625,8 +616,20 @@ export default function StockPanels() {
                             className="bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500 w-20"
                           />
                         </TableCell>
-                        <TableCell className="text-neutral-100 font-medium">
-                          <span className={row.currentStock < Number(row.quantity || 0) ? "text-red-400" : "text-green-400"}>
+                        <TableCell>
+                          <Input
+                            type="date"
+                            value={row.date}
+                            onChange={(e) => updateStockOutRow(index, 'date', e.target.value)}
+                            className="bg-neutral-900 border-neutral-800 text-neutral-100 w-32"
+                          />
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <span className={`font-bold px-2 py-1 rounded text-sm ${
+                            row.currentStock < Number(row.quantity || 0) 
+                              ? "bg-red-900 text-red-300" 
+                              : "bg-green-900 text-green-300"
+                          }`}>
                             {row.currentStock}
                           </span>
                         </TableCell>
@@ -634,6 +637,7 @@ export default function StockPanels() {
                     ))}
                   </TableBody>
                 </Table>
+                </div>
               </div>
               
               <div className="flex gap-2">
