@@ -287,6 +287,44 @@ export default function StockPanels() {
     setStockInGST("");
   };
 
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleStockIn();
+    }
+  };
+
+  const handleStockOutKeyPress = (e: React.KeyboardEvent, rowIndex: number) => {
+    if (e.key === 'Enter') {
+      const row = stockOutRows[rowIndex];
+      if (row.item && row.type && row.quantity && Number(row.quantity) > 0) {
+        inv.addEvent({
+          item: row.item,
+          type: row.type,
+          qty: Number(row.quantity),
+          rate: Number(row.price) || 0,
+          source: "Stock Out",
+          supplier: row.customer || "Unknown",
+          kind: "OUT"
+        });
+        
+        // Clear the row after processing
+        const newRows = [...stockOutRows];
+        newRows[rowIndex] = {
+          item: row.item,
+          type: row.type,
+          quantity: "",
+          customer: "",
+          invoice: "",
+          price: "",
+          gst: "",
+          date: new Date().toISOString().split('T')[0],
+          currentStock: getCurrentStock(row.item, row.type)
+        };
+        setStockOutRows(newRows);
+      }
+    }
+  };
+
   // Stock Out Table Functions
   const getCurrentStock = (itemName: string, type: string): number => {
     if (!itemName || !type) return 0;
@@ -480,6 +518,7 @@ export default function StockPanels() {
               type="number"
               value={qin}
               onChange={(e) => setQin(e.target.value)}
+              onKeyPress={handleKeyPress}
               placeholder="Quantity..."
               className="bg-neutral-900 border-neutral-800 text-neutral-100"
             />
@@ -487,12 +526,14 @@ export default function StockPanels() {
               type="date"
               value={stockInDate}
               onChange={(e) => setStockInDate(e.target.value)}
+              onKeyPress={handleKeyPress}
               className="bg-neutral-900 border-neutral-800 text-neutral-100"
             />
             <Input
               type="text"
               value={invoiceNo}
               onChange={(e) => setInvoiceNo(e.target.value)}
+              onKeyPress={handleKeyPress}
               placeholder="Invoice No."
               className="bg-neutral-900 border-neutral-800 text-neutral-100"
             />
@@ -501,6 +542,7 @@ export default function StockPanels() {
               step="0.01"
               value={stockInPrice}
               onChange={(e) => setStockInPrice(e.target.value)}
+              onKeyPress={handleKeyPress}
               placeholder="Price"
               className="bg-neutral-900 border-neutral-800 text-neutral-100"
             />
@@ -508,6 +550,7 @@ export default function StockPanels() {
               type="number"
               value={stockInGST}
               onChange={(e) => setStockInGST(e.target.value)}
+              onKeyPress={handleKeyPress}
               placeholder="GST (%)"
               className="bg-neutral-900 border-neutral-800 text-neutral-100"
             />
@@ -587,6 +630,7 @@ export default function StockPanels() {
                             type="number"
                             value={row.quantity}
                             onChange={(e) => updateStockOutRow(index, 'quantity', e.target.value)}
+                            onKeyPress={(e) => handleStockOutKeyPress(e, index)}
                             placeholder="Qty"
                             className="bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500 w-20"
                           />
@@ -596,6 +640,7 @@ export default function StockPanels() {
                             type="text"
                             value={row.customer}
                             onChange={(e) => updateStockOutRow(index, 'customer', e.target.value)}
+                            onKeyPress={(e) => handleStockOutKeyPress(e, index)}
                             placeholder="Customer"
                             className="bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500 w-24"
                           />
@@ -605,6 +650,7 @@ export default function StockPanels() {
                             type="text"
                             value={row.invoice}
                             onChange={(e) => updateStockOutRow(index, 'invoice', e.target.value)}
+                            onKeyPress={(e) => handleStockOutKeyPress(e, index)}
                             placeholder="Invoice"
                             className="bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500 w-24"
                           />
@@ -615,6 +661,7 @@ export default function StockPanels() {
                             step="0.01"
                             value={row.price}
                             onChange={(e) => updateStockOutRow(index, 'price', e.target.value)}
+                            onKeyPress={(e) => handleStockOutKeyPress(e, index)}
                             placeholder="Price"
                             className="bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500 w-20"
                           />
@@ -625,6 +672,7 @@ export default function StockPanels() {
                             step="0.01"
                             value={row.gst}
                             onChange={(e) => updateStockOutRow(index, 'gst', e.target.value)}
+                            onKeyPress={(e) => handleStockOutKeyPress(e, index)}
                             placeholder="GST"
                             className="bg-neutral-900 border-neutral-800 text-neutral-100 placeholder:text-neutral-500 w-20"
                           />
@@ -634,6 +682,7 @@ export default function StockPanels() {
                             type="date"
                             value={row.date}
                             onChange={(e) => updateStockOutRow(index, 'date', e.target.value)}
+                            onKeyPress={(e) => handleStockOutKeyPress(e, index)}
                             className="bg-neutral-900 border-neutral-800 text-neutral-100 w-32"
                           />
                         </TableCell>
