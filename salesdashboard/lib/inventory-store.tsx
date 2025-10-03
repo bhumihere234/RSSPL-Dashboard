@@ -42,6 +42,11 @@ const InventoryContext = createContext<InventoryContextType | undefined>(undefin
 
 // Storage keys
 const STORAGE_KEYS = {
+  EVENTS: 'rsspl_events',
+  EXPLICIT_ITEMS: 'rsspl_explicit_items',
+  EXPLICIT_TYPES: 'rsspl_explicit_types',
+  EXPLICIT_SOURCES: 'rsspl_explicit_sources',
+  EXPLICIT_SUPPLIERS: 'rsspl_explicit_suppliers',
   DELETED_ITEMS: 'rsspl_deleted_items',
   DELETED_TYPES: 'rsspl_deleted_types',  
   DELETED_SOURCES: 'rsspl_deleted_sources',
@@ -68,13 +73,43 @@ const saveDeletedToStorage = (key: string, deleted: Set<string>) => {
   }
 };
 
+// Helper functions for general data persistence
+const getFromStorage = (key: string, defaultValue: any): any => {
+  if (typeof window === 'undefined') return defaultValue;
+  try {
+    const stored = localStorage.getItem(key);
+    return stored ? JSON.parse(stored) : defaultValue;
+  } catch {
+    return defaultValue;
+  }
+};
+
+const saveToStorage = (key: string, data: any) => {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(key, JSON.stringify(data));
+  } catch (e) {
+    console.error('Failed to save data:', e);
+  }
+};
+
 export function InventoryProvider({ children }: { children: ReactNode }) {
-  // State
-  const [events, setEvents] = useState<InventoryEvent[]>([]);
-  const [explicitItems, setExplicitItems] = useState<string[]>([]);
-  const [explicitTypes, setExplicitTypes] = useState<Record<string, string[]>>({});
-  const [explicitSources, setExplicitSources] = useState<string[]>([]);
-  const [explicitSuppliers, setExplicitSuppliers] = useState<Record<string, string[]>>({});
+  // State - initialized with data from localStorage
+  const [events, setEvents] = useState<InventoryEvent[]>(() => 
+    getFromStorage(STORAGE_KEYS.EVENTS, [])
+  );
+  const [explicitItems, setExplicitItems] = useState<string[]>(() => 
+    getFromStorage(STORAGE_KEYS.EXPLICIT_ITEMS, [])
+  );
+  const [explicitTypes, setExplicitTypes] = useState<Record<string, string[]>>(() => 
+    getFromStorage(STORAGE_KEYS.EXPLICIT_TYPES, {})
+  );
+  const [explicitSources, setExplicitSources] = useState<string[]>(() => 
+    getFromStorage(STORAGE_KEYS.EXPLICIT_SOURCES, [])
+  );
+  const [explicitSuppliers, setExplicitSuppliers] = useState<Record<string, string[]>>(() => 
+    getFromStorage(STORAGE_KEYS.EXPLICIT_SUPPLIERS, {})
+  );
   const [notifications, setNotifications] = useState<Array<{ id: string; text: string; kind: "in" | "out" }>>([]);
   
   // Deleted items tracking
@@ -91,70 +126,92 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     setDeletedSuppliers(getDeletedFromStorage(STORAGE_KEYS.DELETED_SUPPLIERS));
   }, []);
 
-  // Sample data
+  // Initialize with sample data only if localStorage is empty
   useEffect(() => {
-    const sampleEvents: InventoryEvent[] = [
-      {
-        id: "1",
-        timestamp: Date.now() - 86400000,
-        item: "Laptop",
-        type: "Electronics",
-        qty: 10,
-        rate: 50000,
-        source: "Amazon",
-        supplier: "Dell",
-        kind: "IN"
-      },
-      {
-        id: "2",
-        timestamp: Date.now() - 43200000,
-        item: "Chair",
-        type: "Furniture", 
-        qty: 5,
-        rate: 5000,
-        source: "Local Store",
-        supplier: "IKEA",
-        kind: "OUT"
-      }
-    ];
-    setEvents(sampleEvents);
-    
-    setExplicitItems(["Laptop", "Chair", "Desk", "Monitor"]);
-    setExplicitTypes({
-      "Laptop": ["Electronics", "Computing"],
-      "Chair": ["Furniture", "Office"],
-      "Desk": ["Furniture", "Office"],
-      "Monitor": ["Electronics", "Display"]
-    });
-    setExplicitSources(["Amazon", "Local Store", "Flipkart", "Office Depot"]);
-    setExplicitSuppliers({
-      "Amazon": ["Dell", "HP", "Lenovo"],
-      "Local Store": ["IKEA", "Godrej"],
-      "Flipkart": ["Samsung", "LG"],
-      "Office Depot": ["Steelcase", "Herman Miller"]
-    });
+    const hasExistingData = 
+      getFromStorage(STORAGE_KEYS.EVENTS, []).length > 0 ||
+      getFromStorage(STORAGE_KEYS.EXPLICIT_ITEMS, []).length > 0;
+      
+    if (!hasExistingData) {
+      const sampleEvents: InventoryEvent[] = [
+        {
+          id: "1",
+          timestamp: Date.now() - 86400000,
+          item: "Laptop",
+          type: "Electronics",
+          qty: 10,
+          rate: 50000,
+          source: "Amazon",
+          supplier: "Dell",
+          kind: "IN"
+        },
+        {
+          id: "2",
+          timestamp: Date.now() - 43200000,
+          item: "Chair",
+          type: "Furniture", 
+          qty: 5,
+          rate: 5000,
+          source: "Local Store",
+          supplier: "IKEA",
+          kind: "OUT"
+        }
+      ];
+      
+      const initialItems = ["Laptop", "Chair", "Desk", "Monitor"];
+      const initialTypes = {
+        "Laptop": ["Electronics", "Computing"],
+        "Chair": ["Furniture", "Office"],
+        "Desk": ["Furniture", "Office"],
+        "Monitor": ["Electronics", "Display"]
+      };
+      const initialSources = ["Amazon", "Local Store", "Flipkart", "Office Depot"];
+      const initialSuppliers = {
+        "Amazon": ["Dell", "HP", "Lenovo"],
+        "Local Store": ["IKEA", "Godrej"],
+        "Flipkart": ["Samsung", "LG"],
+        "Office Depot": ["Steelcase", "Herman Miller"]
+      };
+      
+      setEvents(sampleEvents);
+      setExplicitItems(initialItems);
+      setExplicitTypes(initialTypes);
+      setExplicitSources(initialSources);
+      setExplicitSuppliers(initialSuppliers);
+      
+      // Save initial data to localStorage
+      saveToStorage(STORAGE_KEYS.EVENTS, sampleEvents);
+      saveToStorage(STORAGE_KEYS.EXPLICIT_ITEMS, initialItems);
+      saveToStorage(STORAGE_KEYS.EXPLICIT_TYPES, initialTypes);
+      saveToStorage(STORAGE_KEYS.EXPLICIT_SOURCES, initialSources);
+      saveToStorage(STORAGE_KEYS.EXPLICIT_SUPPLIERS, initialSuppliers);
+    }
   }, []);
 
-  // Computed values (filtered by deleted items)
+  // Computed values for dropdown options (filtered by deleted items)
   const items = [...new Set([
     ...explicitItems.filter(item => !deletedItems.has(item)),
-    ...events.map(e => e.item).filter(item => !deletedItems.has(item))
-  ])];
+    // Don't filter events by deleted items - keep historical data intact
+    ...events.map(e => e.item)
+  ])].filter(item => !deletedItems.has(item)); // Only filter the final dropdown list
 
   const types = [...new Set([
     ...Object.values(explicitTypes).flat().filter(type => !deletedTypes.has(type)),
-    ...events.map(e => e.type).filter(type => !deletedTypes.has(type))
-  ])];
+    // Don't filter events by deleted items - keep historical data intact
+    ...events.map(e => e.type)
+  ])].filter(type => !deletedTypes.has(type)); // Only filter the final dropdown list
 
   const sources = [...new Set([
     ...explicitSources.filter(source => !deletedSources.has(source)),
-    ...events.map(e => e.source).filter(source => !deletedSources.has(source))
-  ])];
+    // Don't filter events by deleted items - keep historical data intact
+    ...events.map(e => e.source)
+  ])].filter(source => !deletedSources.has(source)); // Only filter the final dropdown list
 
   const suppliers = [...new Set([
     ...Object.values(explicitSuppliers).flat().filter(supplier => !deletedSuppliers.has(supplier)),
-    ...events.map(e => e.supplier).filter(supplier => !deletedSuppliers.has(supplier))
-  ])];
+    // Don't filter events by deleted items - keep historical data intact
+    ...events.map(e => e.supplier)
+  ])].filter(supplier => !deletedSuppliers.has(supplier)); // Only filter the final dropdown list
 
   // Helper functions
   const pushNotification = (text: string, kind: "in" | "out") => {
@@ -174,14 +231,18 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       id: Date.now().toString(),
       timestamp: Date.now()
     };
-    setEvents(prev => [...prev, newEvent]);
+    const updatedEvents = [...events, newEvent];
+    setEvents(updatedEvents);
+    saveToStorage(STORAGE_KEYS.EVENTS, updatedEvents);
     pushNotification(`Added ${event.kind === "IN" ? "inward" : "outward"} entry for ${event.item}`, event.kind.toLowerCase() as "in" | "out");
   };
 
   const addItem = (name: string) => {
     const n = name.trim();
     if (!n || items.includes(n)) return;
-    setExplicitItems(prev => [...prev, n]);
+    const updatedItems = [...explicitItems, n];
+    setExplicitItems(updatedItems);
+    saveToStorage(STORAGE_KEYS.EXPLICIT_ITEMS, updatedItems);
     pushNotification(`Added item "${n}"`, "in");
   };
 
@@ -202,11 +263,12 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     const tp = type.trim();
     if (!it || !tp) return;
     
-    setExplicitTypes(prev => {
-      const current = prev[it] || [];
-      if (current.includes(tp)) return prev;
-      return { ...prev, [it]: [...current, tp] };
-    });
+    const updatedTypes = {
+      ...explicitTypes,
+      [it]: [...(explicitTypes[it] || []), tp].filter((t, i, arr) => arr.indexOf(t) === i)
+    };
+    setExplicitTypes(updatedTypes);
+    saveToStorage(STORAGE_KEYS.EXPLICIT_TYPES, updatedTypes);
     pushNotification(`Added type "${tp}" to "${it}"`, "in");
   };
 
@@ -226,7 +288,9 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   const addSource = (name: string) => {
     const n = name.trim();
     if (!n || sources.includes(n)) return;
-    setExplicitSources(prev => [...prev, n]);
+    const updatedSources = [...explicitSources, n];
+    setExplicitSources(updatedSources);
+    saveToStorage(STORAGE_KEYS.EXPLICIT_SOURCES, updatedSources);
     pushNotification(`Added source "${n}"`, "in");
   };
 
@@ -247,11 +311,12 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     const sup = supplier.trim();
     if (!s || !sup) return;
     
-    setExplicitSuppliers(prev => {
-      const current = prev[s] || [];
-      if (current.includes(sup)) return prev;
-      return { ...prev, [s]: [...current, sup] };
-    });
+    const updatedSuppliers = {
+      ...explicitSuppliers,
+      [s]: [...(explicitSuppliers[s] || []), sup].filter((sup, i, arr) => arr.indexOf(sup) === i)
+    };
+    setExplicitSuppliers(updatedSuppliers);
+    saveToStorage(STORAGE_KEYS.EXPLICIT_SUPPLIERS, updatedSuppliers);
     pushNotification(`Added supplier "${sup}" to "${s}"`, "in");
   };
 
@@ -270,15 +335,17 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   const getTypesForItem = (item: string): string[] => {
     return [...new Set([
       ...(explicitTypes[item] || []).filter(type => !deletedTypes.has(type)),
-      ...events.filter(e => e.item === item).map(e => e.type).filter(type => !deletedTypes.has(type))
-    ])];
+      // Include all types from historical events, then filter only deleted ones from dropdown
+      ...events.filter(e => e.item === item).map(e => e.type)
+    ])].filter(type => !deletedTypes.has(type));
   };
 
   const getSuppliersForSource = (source: string): string[] => {
     return [...new Set([
       ...(explicitSuppliers[source] || []).filter(supplier => !deletedSuppliers.has(supplier)),
-      ...events.filter(e => e.source === source).map(e => e.supplier).filter(supplier => !deletedSuppliers.has(supplier))
-    ])];
+      // Include all suppliers from historical events, then filter only deleted ones from dropdown
+      ...events.filter(e => e.source === source).map(e => e.supplier)
+    ])].filter(supplier => !deletedSuppliers.has(supplier));
   };
 
   const value: InventoryContextType = {
