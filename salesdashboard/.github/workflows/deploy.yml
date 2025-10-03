@@ -1,0 +1,86 @@
+name: Deploy RSSPL Dashboard
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [20.x]
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+        cache-dependency-path: salesdashboard/package-lock.json
+        
+    - name: Install dependencies
+      run: |
+        cd salesdashboard
+        npm ci
+        
+    - name: Run TypeScript check
+      run: |
+        cd salesdashboard
+        npx tsc --noEmit
+        
+    - name: Run ESLint
+      run: |
+        cd salesdashboard
+        npm run lint
+        
+    - name: Build application
+      run: |
+        cd salesdashboard
+        npm run build
+        
+    - name: Test build output
+      run: |
+        cd salesdashboard
+        ls -la .next/
+        
+  deploy:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        cache-dependency-path: salesdashboard/package-lock.json
+        
+    - name: Install dependencies
+      run: |
+        cd salesdashboard
+        npm ci
+        
+    - name: Build for production
+      run: |
+        cd salesdashboard
+        npm run build
+        
+    - name: Deploy to Vercel
+      uses: amondnet/vercel-action@v25
+      with:
+        vercel-token: ${{ secrets.VERCEL_TOKEN }}
+        vercel-org-id: ${{ secrets.ORG_ID }}
+        vercel-project-id: ${{ secrets.PROJECT_ID }}
+        working-directory: ./salesdashboard
+        vercel-args: '--prod'
