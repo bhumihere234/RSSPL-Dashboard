@@ -288,13 +288,18 @@ export default function StockPanels() {
   };
 
   // Stock Out Table Functions
+  const getCurrentStock = (itemName: string, type: string): number => {
+    if (!itemName || !type) return 0;
+    return inv.events
+      .filter(e => e.item === itemName && e.type === type)
+      .reduce((total, e) => total + (e.kind === "IN" ? e.qty : -e.qty), 0);
+  };
+
   const initializeStockOutTable = () => {
     const rows: StockOutRow[] = inv.items.map(itemName => {
       const types = inv.getTypesForItem(itemName);
       const firstType = types[0] || "";
-      const currentStock = firstType ? inv.events
-        .filter(e => e.item === itemName && e.type === firstType)
-        .reduce((total, e) => total + (e.kind === "IN" ? e.qty : -e.qty), 0) : 0;
+      const currentStock = getCurrentStock(itemName, firstType);
       
       return {
         item: itemName,
@@ -321,15 +326,23 @@ export default function StockPanels() {
       if (field === 'type') {
         const item = newRows[index].item;
         const type = value;
-        const currentStock = inv.events
-          .filter(e => e.item === item && e.type === type)
-          .reduce((total, e) => total + (e.kind === "IN" ? e.qty : -e.qty), 0);
+        const currentStock = getCurrentStock(item, type);
         newRows[index].currentStock = currentStock;
       }
       
       return newRows;
     });
   };
+
+  // Update stock-out table when inventory changes
+  React.useEffect(() => {
+    if (showStockOutTable && stockOutRows.length > 0) {
+      setStockOutRows(prev => prev.map(row => ({
+        ...row,
+        currentStock: getCurrentStock(row.item, row.type)
+      })));
+    }
+  }, [inv.events, showStockOutTable]);
 
   const processStockOutTable = () => {
     stockOutRows.forEach(row => {
@@ -626,11 +639,11 @@ export default function StockPanels() {
                         </TableCell>
                         <TableCell className="text-center">
                           <span className={`font-bold px-2 py-1 rounded text-sm ${
-                            row.currentStock < Number(row.quantity || 0) 
+                            getCurrentStock(row.item, row.type) < Number(row.quantity || 0) 
                               ? "bg-red-900 text-red-300" 
                               : "bg-green-900 text-green-300"
                           }`}>
-                            {row.currentStock}
+                            {getCurrentStock(row.item, row.type)}
                           </span>
                         </TableCell>
                       </TableRow>
