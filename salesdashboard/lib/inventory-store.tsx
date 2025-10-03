@@ -74,17 +74,37 @@ const saveDeletedToStorage = (key: string, deleted: Set<string>) => {
 };
 
 // Helper functions for general data persistence
-const getFromStorage = (key: string, defaultValue: any): any => {
-  if (typeof window === 'undefined') return defaultValue;
+const getEventsFromStorage = (): InventoryEvent[] => {
+  if (typeof window === 'undefined') return [];
   try {
-    const stored = localStorage.getItem(key);
-    return stored ? JSON.parse(stored) : defaultValue;
+    const stored = localStorage.getItem(STORAGE_KEYS.EVENTS);
+    return stored ? JSON.parse(stored) : [];
   } catch {
-    return defaultValue;
+    return [];
   }
 };
 
-const saveToStorage = (key: string, data: any) => {
+const getStringArrayFromStorage = (key: string): string[] => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const stored = localStorage.getItem(key);
+    return stored ? JSON.parse(stored) : [];
+  } catch {
+    return [];
+  }
+};
+
+const getStringRecordFromStorage = (key: string): Record<string, string[]> => {
+  if (typeof window === 'undefined') return {};
+  try {
+    const stored = localStorage.getItem(key);
+    return stored ? JSON.parse(stored) : {};
+  } catch {
+    return {};
+  }
+};
+
+const saveToStorage = (key: string, data: unknown) => {
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(key, JSON.stringify(data));
@@ -96,19 +116,19 @@ const saveToStorage = (key: string, data: any) => {
 export function InventoryProvider({ children }: { children: ReactNode }) {
   // State - initialized with data from localStorage
   const [events, setEvents] = useState<InventoryEvent[]>(() => 
-    getFromStorage(STORAGE_KEYS.EVENTS, [])
+    getEventsFromStorage()
   );
   const [explicitItems, setExplicitItems] = useState<string[]>(() => 
-    getFromStorage(STORAGE_KEYS.EXPLICIT_ITEMS, [])
+    getStringArrayFromStorage(STORAGE_KEYS.EXPLICIT_ITEMS)
   );
   const [explicitTypes, setExplicitTypes] = useState<Record<string, string[]>>(() => 
-    getFromStorage(STORAGE_KEYS.EXPLICIT_TYPES, {})
+    getStringRecordFromStorage(STORAGE_KEYS.EXPLICIT_TYPES)
   );
   const [explicitSources, setExplicitSources] = useState<string[]>(() => 
-    getFromStorage(STORAGE_KEYS.EXPLICIT_SOURCES, [])
+    getStringArrayFromStorage(STORAGE_KEYS.EXPLICIT_SOURCES)
   );
   const [explicitSuppliers, setExplicitSuppliers] = useState<Record<string, string[]>>(() => 
-    getFromStorage(STORAGE_KEYS.EXPLICIT_SUPPLIERS, {})
+    getStringRecordFromStorage(STORAGE_KEYS.EXPLICIT_SUPPLIERS)
   );
   const [notifications, setNotifications] = useState<Array<{ id: string; text: string; kind: "in" | "out" }>>([]);
   
@@ -129,8 +149,8 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   // Initialize with sample data only if localStorage is empty
   useEffect(() => {
     const hasExistingData = 
-      getFromStorage(STORAGE_KEYS.EVENTS, []).length > 0 ||
-      getFromStorage(STORAGE_KEYS.EXPLICIT_ITEMS, []).length > 0;
+      getEventsFromStorage().length > 0 ||
+      getStringArrayFromStorage(STORAGE_KEYS.EXPLICIT_ITEMS).length > 0;
       
     if (!hasExistingData) {
       const sampleEvents: InventoryEvent[] = [
