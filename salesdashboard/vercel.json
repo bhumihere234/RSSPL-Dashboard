@@ -1,0 +1,22 @@
+{
+  "framework": "nextjs",
+  "buildCommand": "npm run build",
+  "outputDirectory": ".next",
+  "installCommand": "npm install",
+  "devCommand": "npm run dev",
+  "env": {
+    "NODE_ENV": "production"
+  },
+  "functions": {
+    "app/**/*.tsx": {
+      "runtime": "nodejs20.x"
+    }
+  },
+  "redirects": [
+    {
+      "source": "/(.*)",
+      "destination": "/",
+      "permanent": false
+    }
+  ]
+}
