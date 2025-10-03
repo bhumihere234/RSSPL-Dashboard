@@ -21,7 +21,7 @@ export interface InventoryContextType {
   types: string[];
   sources: string[];
   suppliers: string[];
-  notifications: Array<{ id: string; text: string; kind: "in" | "out" }>;
+  notifications: Array<{ id: string; text: string; kind: "in" | "out"; timestamp: number }>;
   
   addEvent: (event: Omit<InventoryEvent, "id" | "timestamp">) => void;
   addItem: (name: string) => void;
@@ -130,7 +130,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   const [explicitSuppliers, setExplicitSuppliers] = useState<Record<string, string[]>>(() => 
     getStringRecordFromStorage(STORAGE_KEYS.EXPLICIT_SUPPLIERS)
   );
-  const [notifications, setNotifications] = useState<Array<{ id: string; text: string; kind: "in" | "out" }>>([]);
+  const [notifications, setNotifications] = useState<Array<{ id: string; text: string; kind: "in" | "out"; timestamp: number }>>([]);
   
   // Deleted items tracking
   const [deletedItems, setDeletedItems] = useState<Set<string>>(new Set());
@@ -235,8 +235,9 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
 
   // Helper functions
   const pushNotification = (text: string, kind: "in" | "out") => {
-    const id = Date.now().toString();
-    setNotifications(prev => [...prev, { id, text, kind }]);
+    const timestamp = Date.now();
+    const id = timestamp.toString();
+    setNotifications(prev => [...prev, { id, text, kind, timestamp }]);
     setTimeout(() => {
       setNotifications(prev => prev.filter(n => n.id !== id));
     }, 3000);

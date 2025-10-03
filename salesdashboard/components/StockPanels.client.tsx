@@ -638,13 +638,22 @@ export default function StockPanels() {
                           />
                         </TableCell>
                         <TableCell className="text-center">
-                          <span className={`font-bold px-2 py-1 rounded text-sm ${
-                            getCurrentStock(row.item, row.type) < Number(row.quantity || 0) 
-                              ? "bg-red-900 text-red-300" 
-                              : "bg-green-900 text-green-300"
-                          }`}>
-                            {getCurrentStock(row.item, row.type)}
-                          </span>
+                          <div className="flex items-center justify-center gap-2">
+                            <span className={`font-bold px-2 py-1 rounded text-sm ${
+                              getCurrentStock(row.item, row.type) < Number(row.quantity || 0) 
+                                ? "bg-red-900 text-red-300" 
+                                : "bg-green-900 text-green-300"
+                            }`}>
+                              {getCurrentStock(row.item, row.type)}
+                            </span>
+                            {(getCurrentStock(row.item, row.type) - Number(row.quantity || 0)) === 0 && (
+                              <input 
+                                type="checkbox" 
+                                className="w-4 h-4 text-green-600 bg-neutral-800 border-neutral-600 rounded focus:ring-green-500"
+                                title="Stock will reach zero after this transaction"
+                              />
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}

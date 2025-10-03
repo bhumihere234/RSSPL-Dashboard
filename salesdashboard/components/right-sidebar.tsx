@@ -71,8 +71,8 @@ export function RightSidebar() {
     end.setDate(start.getDate() + 1);
 
     // Filter notifications from today
-    return inventory.notifications.filter(() => {
-      const notificationDate = new Date();
+    return inventory.notifications.filter((notification) => {
+      const notificationDate = new Date(notification.timestamp);
       return notificationDate >= start && notificationDate < end;
     });
   }, [now, inventory.notifications]);
