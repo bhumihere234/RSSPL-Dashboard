@@ -1,6 +1,17 @@
 "use client";
 
 import React, { createContext, useContext, useState, ReactNode, useEffect } from "react";
+import { db } from "@/lib/firebase/client";
+import {
+  collection,
+  addDoc,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  setDoc,
+  getDocs,
+  updateDoc
+} from "firebase/firestore";
 
 // Types
 export interface InventoryEvent {
@@ -114,22 +125,51 @@ const saveToStorage = (key: string, data: unknown) => {
 };
 
 export function InventoryProvider({ children }: { children: ReactNode }) {
-  // State - initialized with data from localStorage
-  const [events, setEvents] = useState<InventoryEvent[]>(() => 
-    getEventsFromStorage()
-  );
-  const [explicitItems, setExplicitItems] = useState<string[]>(() => 
-    getStringArrayFromStorage(STORAGE_KEYS.EXPLICIT_ITEMS)
-  );
-  const [explicitTypes, setExplicitTypes] = useState<Record<string, string[]>>(() => 
-    getStringRecordFromStorage(STORAGE_KEYS.EXPLICIT_TYPES)
-  );
-  const [explicitSources, setExplicitSources] = useState<string[]>(() => 
-    getStringArrayFromStorage(STORAGE_KEYS.EXPLICIT_SOURCES)
-  );
-  const [explicitSuppliers, setExplicitSuppliers] = useState<Record<string, string[]>>(() => 
-    getStringRecordFromStorage(STORAGE_KEYS.EXPLICIT_SUPPLIERS)
-  );
+  // State - initialized empty, will be filled by Firestore
+  const [events, setEvents] = useState<InventoryEvent[]>([]);
+  const [explicitItems, setExplicitItems] = useState<string[]>([]);
+  const [explicitTypes, setExplicitTypes] = useState<Record<string, string[]>>({});
+  const [explicitSources, setExplicitSources] = useState<string[]>([]);
+  const [explicitSuppliers, setExplicitSuppliers] = useState<Record<string, string[]>>({});
+  // Real-time Firestore listeners
+  useEffect(() => {
+    if (!db) return;
+    // Items
+    const unsubItems = onSnapshot(collection(db, "items"), (snapshot) => {
+      setExplicitItems(snapshot.docs.map(doc => doc.id));
+    });
+    // Types
+    const unsubTypes = onSnapshot(collection(db, "types"), (snapshot) => {
+      const typesObj: Record<string, string[]> = {};
+      snapshot.docs.forEach(doc => {
+        typesObj[doc.id] = doc.data().types || [];
+      });
+      setExplicitTypes(typesObj);
+    });
+    // Events
+    const unsubEvents = onSnapshot(collection(db, "events"), (snapshot) => {
+      setEvents(snapshot.docs.map(doc => doc.data() as InventoryEvent));
+    });
+    // Sources
+    const unsubSources = onSnapshot(collection(db, "sources"), (snapshot) => {
+      setExplicitSources(snapshot.docs.map(doc => doc.id));
+    });
+    // Suppliers
+    const unsubSuppliers = onSnapshot(collection(db, "suppliers"), (snapshot) => {
+      const suppliersObj: Record<string, string[]> = {};
+      snapshot.docs.forEach(doc => {
+        suppliersObj[doc.id] = doc.data().suppliers || [];
+      });
+      setExplicitSuppliers(suppliersObj);
+    });
+    return () => {
+      unsubItems();
+      unsubTypes();
+      unsubEvents();
+      unsubSources();
+      unsubSuppliers();
+    };
+  }, []);
   const [notifications, setNotifications] = useState<Array<{ id: string; text: string; kind: "in" | "out"; timestamp: number }>>([]);
   
   // Deleted items tracking
@@ -247,109 +287,86 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
 
   // CRUD operations
   const addEvent = (event: Omit<InventoryEvent, "id" | "timestamp">) => {
+    if (!db) return;
     const newEvent: InventoryEvent = {
       ...event,
       id: Date.now().toString(),
       timestamp: Date.now()
     };
-    const updatedEvents = [...events, newEvent];
-    setEvents(updatedEvents);
-    saveToStorage(STORAGE_KEYS.EVENTS, updatedEvents);
+    addDoc(collection(db, "events"), newEvent);
     pushNotification(`Added ${event.kind === "IN" ? "inward" : "outward"} entry for ${event.item}`, event.kind.toLowerCase() as "in" | "out");
   };
 
   const addItem = (name: string) => {
-    const n = name.trim();
-    if (!n || items.includes(n)) return;
-    const updatedItems = [...explicitItems, n];
-    setExplicitItems(updatedItems);
-    saveToStorage(STORAGE_KEYS.EXPLICIT_ITEMS, updatedItems);
-    pushNotification(`Added item "${n}"`, "in");
+  if (!db) return;
+  const n = name.trim();
+  if (!n || explicitItems.includes(n)) return;
+  setDoc(doc(collection(db, "items"), n), {});
+  pushNotification(`Added item "${n}"`, "in");
   };
 
   const removeItem = (name: string) => {
-    const n = name.trim();
-    if (!n) return;
-    
-    const newDeleted = new Set(deletedItems);
-    newDeleted.add(n);
-    setDeletedItems(newDeleted);
-    saveDeletedToStorage(STORAGE_KEYS.DELETED_ITEMS, newDeleted);
-    
-    pushNotification(`Removed item "${n}" from catalog`, "out");
+  if (!db) return;
+  const n = name.trim();
+  if (!n) return;
+  deleteDoc(doc(collection(db, "items"), n));
+  pushNotification(`Removed item "${n}" from catalog`, "out");
   };
 
   const addType = (item: string, type: string) => {
-    const it = item.trim();
-    const tp = type.trim();
-    if (!it || !tp) return;
-    
-    const updatedTypes = {
-      ...explicitTypes,
-      [it]: [...(explicitTypes[it] || []), tp].filter((t, i, arr) => arr.indexOf(t) === i)
-    };
-    setExplicitTypes(updatedTypes);
-    saveToStorage(STORAGE_KEYS.EXPLICIT_TYPES, updatedTypes);
-    pushNotification(`Added type "${tp}" to "${it}"`, "in");
+  if (!db) return;
+  const it = item.trim();
+  const tp = type.trim();
+  if (!it || !tp) return;
+  const typesArr = [...(explicitTypes[it] || []), tp].filter((t, i, arr) => arr.indexOf(t) === i);
+  setDoc(doc(collection(db, "types"), it), { types: typesArr });
+  pushNotification(`Added type "${tp}" to "${it}"`, "in");
   };
 
   const removeType = (item: string, type: string) => {
-    const it = item.trim();
-    const tp = type.trim();
-    if (!it || !tp) return;
-    
-    const newDeleted = new Set(deletedTypes);
-    newDeleted.add(tp);
-    setDeletedTypes(newDeleted);
-    saveDeletedToStorage(STORAGE_KEYS.DELETED_TYPES, newDeleted);
-    
-    pushNotification(`Removed type "${tp}" from catalog`, "out");
+  if (!db) return;
+  const it = item.trim();
+  const tp = type.trim();
+  if (!it || !tp) return;
+  const typesArr = (explicitTypes[it] || []).filter(t => t !== tp);
+  setDoc(doc(collection(db, "types"), it), { types: typesArr });
+  pushNotification(`Removed type "${tp}" from catalog`, "out");
   };
 
   const addSource = (name: string) => {
-    const n = name.trim();
-    if (!n || sources.includes(n)) return;
-    const updatedSources = [...explicitSources, n];
-    setExplicitSources(updatedSources);
-    saveToStorage(STORAGE_KEYS.EXPLICIT_SOURCES, updatedSources);
-    pushNotification(`Added source "${n}"`, "in");
+  if (!db) return;
+  const n = name.trim();
+  if (!n || explicitSources.includes(n)) return;
+  setDoc(doc(collection(db, "sources"), n), {});
+  pushNotification(`Added source "${n}"`, "in");
   };
 
   const removeSource = (name: string) => {
-    const n = name.trim();
-    if (!n) return;
-    
-    const newDeleted = new Set(deletedSources);
-    newDeleted.add(n);
-    setDeletedSources(newDeleted);
-    saveDeletedToStorage(STORAGE_KEYS.DELETED_SOURCES, newDeleted);
-    
-    pushNotification(`Removed source "${n}" from catalog`, "out");
+  if (!db) return;
+  const n = name.trim();
+  if (!n) return;
+  deleteDoc(doc(collection(db, "sources"), n));
+  pushNotification(`Removed source "${n}" from catalog`, "out");
   };
 
   const addSupplier = (source: string, supplier: string) => {
-    const s = source.trim();
-    const sup = supplier.trim();
-    if (!s || !sup) return;
-    
-    const updatedSuppliers = {
-      ...explicitSuppliers,
-      [s]: [...(explicitSuppliers[s] || []), sup].filter((sup, i, arr) => arr.indexOf(sup) === i)
-    };
-    setExplicitSuppliers(updatedSuppliers);
-    saveToStorage(STORAGE_KEYS.EXPLICIT_SUPPLIERS, updatedSuppliers);
-    pushNotification(`Added supplier "${sup}" to "${s}"`, "in");
+  if (!db) return;
+  const s = source.trim();
+  const sup = supplier.trim();
+  if (!s || !sup) return;
+  const suppliersArr = [...(explicitSuppliers[s] || []), sup].filter((sup, i, arr) => arr.indexOf(sup) === i);
+  setDoc(doc(collection(db, "suppliers"), s), { suppliers: suppliersArr });
+  pushNotification(`Added supplier "${sup}" to "${s}"`, "in");
   };
 
   const removeSupplier = (supplier: string) => {
     const sup = supplier.trim();
-    if (!sup) return;
-    
-    const newDeleted = new Set(deletedSuppliers);
-    newDeleted.add(sup);
-    setDeletedSuppliers(newDeleted);
-    saveDeletedToStorage(STORAGE_KEYS.DELETED_SUPPLIERS, newDeleted);
-    
+    if (!sup || !db) return;
+    // Remove supplier from all sources
+    Object.keys(explicitSuppliers).forEach(source => {
+      const suppliersArr = (explicitSuppliers[source] || []).filter(s => s !== sup);
+      if (db) setDoc(doc(collection(db, "suppliers"), source), { suppliers: suppliersArr });
+    });
     pushNotification(`Removed supplier "${sup}" from catalog`, "out");
   };
 
